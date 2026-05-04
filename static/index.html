@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EMU Regulation Assistant</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Local-only V1 demo</p>
+        <h1>EMU Regulation Assistant</h1>
+        <p class="lede">
+          Ask staff-facing questions about indexed EMU regulations. Answers stay grounded in cited
+          evidence and will refuse or clarify when support is weak.
+        </p>
+      </section>
+
+      <section class="panel" aria-label="Ask a regulation question">
+        <label for="question">Question</label>
+        <textarea id="question" rows="4">What is the attendance requirement?</textarea>
+        <div class="controls">
+          <select id="mode" aria-label="Operating mode">
+            <option value="cheap">Cheap</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="expensive">Expensive</option>
+          </select>
+          <label class="check"><input id="cross" type="checkbox" /> Cross-corpus</label>
+          <button id="ask">Ask</button>
+        </div>
+      </section>
+
+      <section class="result" aria-live="polite">
+        <div id="status">Ready.</div>
+        <pre id="answer"></pre>
+        <div id="citations"></div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

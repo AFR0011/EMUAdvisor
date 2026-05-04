@@ -1,0 +1,137 @@
+:root {
+  --navy: #062647;
+  --blue: #0b4d79;
+  --gold: #f2b51d;
+  --paper: #f8f6ee;
+  --ink: #122033;
+  --muted: #667085;
+  --line: rgba(6, 38, 71, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: "Aptos", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(242, 181, 29, 0.28), transparent 28rem),
+    linear-gradient(135deg, var(--paper), #e8eef2);
+}
+
+.shell {
+  width: min(980px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 48px 0;
+}
+
+.hero {
+  padding: 36px;
+  color: white;
+  background: linear-gradient(135deg, var(--navy), var(--blue));
+  border-radius: 28px;
+  box-shadow: 0 24px 80px rgba(6, 38, 71, 0.22);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--gold);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.3rem, 7vw, 5rem);
+  line-height: 0.95;
+}
+
+.lede {
+  max-width: 720px;
+  margin: 22px 0 0;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 1.1rem;
+}
+
+.panel,
+.result {
+  margin-top: 22px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+textarea,
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  color: var(--ink);
+  font: inherit;
+  background: white;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  color: var(--muted);
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 13px 22px;
+  color: var(--navy);
+  background: var(--gold);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#status {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+pre {
+  white-space: pre-wrap;
+  font: inherit;
+  line-height: 1.55;
+}
+
+.citation {
+  margin-top: 10px;
+  padding: 12px;
+  border-left: 4px solid var(--gold);
+  background: white;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}

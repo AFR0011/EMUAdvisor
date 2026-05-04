@@ -1,6 +1,6 @@
 # Run Protocol
 
-Last updated: 2026-04-30
+Last updated: 2026-05-04
 
 ## Current Rule
 
@@ -8,10 +8,20 @@ There is no single standard test command. Use the smallest verification level th
 
 ## Setup
 
-Run commands from the old-demo codebase unless a future root app is created:
+Run active project commands from the root repo. Use `.old/` only as a legacy reference until code is promoted or replaced.
+
+Root setup:
 
 ```powershell
-cd "C:\Users\Ali\Desktop\EMUAdvisor\NLPCrawler (Old Demo)"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+```
+
+Legacy demo setup, if needed:
+
+```powershell
+cd "C:\Users\Ali\Desktop\EMUAdvisor\.old"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r backend\requirements.txt
@@ -37,11 +47,37 @@ Check that docs do not contradict `EMU_RAG_Current_System_Specs.md`.
 
 2. Python syntax check without writing bytecode
 
+For active root code:
+
 ```powershell
 @'
 import ast
 from pathlib import Path
-root = Path(r"C:\Users\Ali\Desktop\EMUAdvisor\NLPCrawler (Old Demo)")
+root = Path(r"C:\Users\Ali\Desktop\EMUAdvisor")
+failed = []
+checked = 0
+for base in [root / "emu_advisor", root / "tests"]:
+    for path in base.rglob("*.py"):
+        checked += 1
+        try:
+            ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except Exception as exc:
+            failed.append((str(path), repr(exc)))
+if failed:
+    for path, exc in failed:
+        print(path, exc)
+    raise SystemExit(1)
+print(f"syntax ok: {checked} files")
+'@ | python -
+```
+
+For legacy `.old/` reference code:
+
+```powershell
+@'
+import ast
+from pathlib import Path
+root = Path(r"C:\Users\Ali\Desktop\EMUAdvisor\.old")
 failed = []
 for path in root.rglob("*.py"):
     if ".git" in path.parts or "__pycache__" in path.parts:
@@ -58,14 +94,23 @@ print("syntax ok")
 '@ | python -
 ```
 
-3. Backend import/startup smoke, when backend dependencies are installed
+3. Root schema unit tests
 
 ```powershell
-cd "C:\Users\Ali\Desktop\EMUAdvisor\NLPCrawler (Old Demo)"
+python -m unittest discover -s tests
+python -m emu_advisor.validate_jsonl tests\fixtures\canonical_chunks.valid.jsonl --kind chunk
+python -m emu_advisor.evaluation eval_sets\v1_seed.jsonl
+python -c "from emu_advisor.server import app; print(app.title)"
+```
+
+4. Backend import/startup smoke, when backend dependencies are installed
+
+```powershell
+cd "C:\Users\Ali\Desktop\EMUAdvisor\.old"
 python -c "from backend.server import app; print(app.title)"
 ```
 
-4. Pipeline build smoke, when network access to official EMU sources is allowed
+5. Pipeline build smoke, when network access to official EMU sources is allowed
 
 ```powershell
 python 1.BasicCrawlV2.py --out mevzuat_crawl --seed https://mevzuat.emu.edu.tr/content.htm --max-pages 20
@@ -78,7 +123,7 @@ python 5.3.PostprocessChunks.py --in chunks_dedup.jsonl --out chunks_post.jsonl 
 python 6.BuildIndex.py --in chunks_post.jsonl --out-dir index_v4 --embed-model intfloat/multilingual-e5-base --device cpu
 ```
 
-5. Retrieval smoke, when an index exists
+6. Retrieval smoke, when an index exists
 
 ```powershell
 python 6.TestRetrieve.py --index-dir index_v4 --lang en --q "attendance requirement" --k 8
@@ -86,7 +131,7 @@ python 7.RetrieveHybrid.py --index-dir index_v4 --q "salary scales" --lang auto 
 python 8.RerankMultilingualV7_3.py --index-dir index_v4 --q "high honour criteria" --lang auto --k 8
 ```
 
-6. Backend/API/UI smoke, when an index and backend dependencies exist
+7. Backend/API/UI smoke, when an index and backend dependencies exist
 
 ```powershell
 python -m uvicorn backend.server:app --host 127.0.0.1 --port 8000
@@ -98,7 +143,7 @@ Then check:
 - `POST http://127.0.0.1:8000/ask`
 - Browser load at `http://127.0.0.1:8000`
 
-7. Evaluation gate, when a built index and query set exist
+8. Evaluation gate, when a built index and query set exist
 
 ```powershell
 python EvaluateRetrieval.py --index-dir index_v4 --out eval_run --k 8
@@ -110,12 +155,20 @@ For V1 readiness, evaluate 50-60 English/Turkish questions and verify that corre
 
 - Ollama is optional for old-demo answer synthesis but required when `backend/config.json` has `llm.enabled` set to `true`.
 - Current config expects Ollama at `http://localhost:11434`.
-- Qdrant is a target architecture direction, not an implemented dependency in the old demo.
+- Qdrant server integration is still a target architecture direction. Root code currently includes an offline Qdrant-compatible local store because `qdrant_client` is not installed in this environment.
+
+## Demo UI
+
+```powershell
+python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000`.
 
 ## Claiming Results
 
 - Syntax checks validate parseability only.
 - Backend import checks validate import/startup only.
-- Retrieval smoke checks validate that commands run against a present index; they do not prove answer quality.
+- Local retrieval smoke checks validate code paths and demo fixtures; they do not prove real corpus answer quality.
 - Evaluation results are the only acceptable evidence for retrieval-quality claims.
 - Manual UI/API checks are required before claiming a user-facing flow works.

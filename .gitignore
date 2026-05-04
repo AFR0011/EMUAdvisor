@@ -1,1 +1,21 @@
-./.old/*
+.old/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Generated RAG artifacts
+mevzuat_crawl/
+eval/
+eval_run/
+index_*/
+snapshots/
+old/
+*.sqlite
+*.jsonl.tmp
+logs/

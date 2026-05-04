@@ -3,8 +3,8 @@
 ## Repo Identity
 
 - This workspace is the EMUAdvisor project for a local-only EMU Regulation Assistant.
-- The root folder is not currently a Git repository.
-- `NLPCrawler (Old Demo)/` is a nested Git repository on `main` with remote `git@github.com:AFR0011/NLPCrawler.git`; treat it as legacy/prototype code unless the user explicitly promotes it.
+- The root folder is the primary Git repository for future `emu-advisor` work.
+- `.old/` is an ignored local archive of the previous NLPCrawler demo; treat it as legacy/prototype reference code unless the user explicitly promotes or imports it.
 - The project is a research/prototype-to-product workspace, not a finished production app.
 
 ## Source Of Truth
@@ -15,7 +15,7 @@ Use these sources in order:
 2. `docs/PROJECT_STATE.md` for current repo status, active objective, risks, and next actions.
 3. `docs/REPO_MAP.md` for structure, entrypoints, data flow, and active-versus-legacy surfaces.
 4. `docs/RUN_PROTOCOL.md` for local setup and verification.
-5. `NLPCrawler (Old Demo)/README.md` and `NLPCrawler (Old Demo)/backend/README.md` only for old-demo mechanics and commands.
+5. `.old/README.md` and `.old/backend/README.md` only for old-demo mechanics and commands.
 
 ## Product Boundaries
 
@@ -35,7 +35,7 @@ Use these sources in order:
 - Update `docs/MIGRATION_BACKLOG.md` when migration priorities change or new blockers are discovered.
 - Do not claim retrieval, answer quality, latency, or model behavior is validated unless the required crawl/index/model environment was actually run.
 - Keep generated crawl, index, evaluation, and cache artifacts out of source control unless the user explicitly asks to preserve an artifact.
-- Existing tracked `__pycache__/` files in `NLPCrawler (Old Demo)/` are historical drift; do not use them as evidence of runtime correctness.
+- Existing `__pycache__/` files in `.old/` are historical drift; do not use them as evidence of runtime correctness.
 
 ## Verification Rules
 
