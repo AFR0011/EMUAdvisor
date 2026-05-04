@@ -21,7 +21,12 @@ class ServerTests(unittest.TestCase):
 
         health = client.get("/health")
         whoami = client.get("/whoami")
-        answer = client.post("/ask", json={"question": "What is the attendance requirement?", "mode": "balanced"})
+        answer = client.post(
+            "/ask",
+            json={"question": "What is the attendance requirement?", "mode": "balanced", "answer_style": "extractive"},
+        )
+        metrics = client.get("/metrics")
+        corpus_status = client.get("/corpus/status")
 
         self.assertEqual(health.status_code, 200)
         self.assertTrue(health.json()["ok"])
@@ -30,6 +35,10 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(answer.status_code, 200)
         self.assertIn(answer.json()["mode"], {"answer", "answer_uncertain"})
         self.assertGreaterEqual(len(answer.json()["citations"]), 1)
+        self.assertIn("timings", answer.json())
+        self.assertEqual(metrics.status_code, 200)
+        self.assertEqual(corpus_status.status_code, 200)
+        self.assertGreaterEqual(corpus_status.json()["chunk_count"], 1)
 
     def test_stream_endpoint_returns_ndjson_events(self) -> None:
         client = TestClient(create_app())

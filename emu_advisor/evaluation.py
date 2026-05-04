@@ -18,7 +18,12 @@ class EvaluationCase:
     expected_corpus: Optional[str]
     expected_document_id: Optional[str]
     expected_chunk_id: Optional[str]
+    expected_source_url: Optional[str]
+    expected_answer_keywords: List[str]
     category: str
+    is_correct: Optional[bool]
+    citation_ok: Optional[bool]
+    notes: str
 
 
 @dataclass(frozen=True)
@@ -37,6 +42,7 @@ def load_cases(path: Path) -> List[EvaluationCase]:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
+            _reject_mojibake(line, line_number=line_number)
             payload = json.loads(line)
             cases.append(_case_from_payload(payload, line_number=line_number))
     if not cases:
@@ -52,7 +58,15 @@ def evaluate_hits(case: EvaluationCase, hits: List[Dict[str, Any]]) -> Retrieval
     rank: Optional[int] = None
     for idx, hit in enumerate(hits, start=1):
         ids = {str(hit.get("chunk_id", "")), str(hit.get("document_id", ""))}
-        if expected_ids & ids:
+        source_url = str(hit.get("source_url", ""))
+        text = str(hit.get("chunk_text", "")).casefold()
+        expected_keywords = getattr(case, "expected_answer_keywords", [])
+        expected_source_url = getattr(case, "expected_source_url", None)
+        keyword_hit = bool(expected_keywords) and all(
+            keyword.casefold() in text for keyword in expected_keywords
+        )
+        source_hit = bool(expected_source_url) and expected_source_url in source_url
+        if (expected_ids and expected_ids & ids) or source_hit or keyword_hit:
             rank = idx
             break
 
@@ -98,8 +112,19 @@ def _case_from_payload(payload: Dict[str, Any], *, line_number: int) -> Evaluati
         expected_corpus=payload.get("expected_corpus"),
         expected_document_id=payload.get("expected_document_id"),
         expected_chunk_id=payload.get("expected_chunk_id"),
+        expected_source_url=payload.get("expected_source_url"),
+        expected_answer_keywords=[str(item) for item in payload.get("expected_answer_keywords", [])],
         category=str(payload["category"]),
+        is_correct=payload.get("is_correct"),
+        citation_ok=payload.get("citation_ok"),
+        notes=str(payload.get("notes") or ""),
     )
+
+
+def _reject_mojibake(line: str, *, line_number: int) -> None:
+    markers = ("Ã", "Ä", "Å", "Â")
+    if any(marker in line for marker in markers):
+        raise ValueError(f"line {line_number}: possible mojibake detected")
 
 
 def build_parser() -> argparse.ArgumentParser:

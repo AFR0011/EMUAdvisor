@@ -203,7 +203,10 @@ def ingest_html_file(
 
 def detect_language(blocks: Iterable[Dict[str, str]], source_url: str = "") -> str:
     text = " ".join(block.get("text", "") for block in blocks).lower()
-    if "/tr/" in source_url.lower() or re.search(r"\b(madde|yonetmelik|yönetmelik|ogrenci|öğrenci)\b", text):
+    if "/tr/" in source_url.lower() or re.search(
+        r"\b(madde|yönetmelik|yonetmelik|öğrenci|ogrenci|kurul|tüzük|tuzuk|yasa)\b",
+        text,
+    ):
         return "tr"
     return "en"
 

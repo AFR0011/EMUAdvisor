@@ -9,15 +9,20 @@ from urllib.parse import urlparse
 
 TURKISH_MARKERS = set("çğıöşüÇĞİÖŞÜ")
 OUT_OF_SCOPE_TERMS = (
-    "course",
-    "program",
     "event",
+    "events",
+    "campus events",
     "activity center",
     "student advising",
     "staff advising",
     "email",
     "schedule a meeting",
     "send email",
+    "etkinlik",
+    "etkinlikler",
+    "e-posta",
+    "eposta",
+    "bölüm program",
 )
 
 
@@ -34,7 +39,7 @@ def detect_query_language(query: str) -> str:
     if any(char in TURKISH_MARKERS for char in query):
         return "tr"
     lowered = query.lower()
-    if any(token in lowered for token in (" nedir", " yonetmelik", "yönetmelik", " madde", " öğrenci", "ogretim")):
+    if any(token in lowered for token in (" nedir", " yonetmelik", "yönetmelik", " madde", " öğrenci", "ogrenci", "öğretim", "ogretim")):
         return "tr"
     return "en"
 
@@ -51,7 +56,7 @@ def route_query(query: str, *, explicit_cross_corpus: bool = False) -> RouteDeci
         )
 
     language = detect_query_language(query)
-    if explicit_cross_corpus:
+    if explicit_cross_corpus or asks_cross_corpus(query):
         return RouteDecision(
             query_language=language,
             corpora=["regulations_en", "regulations_tr"],
@@ -67,6 +72,22 @@ def route_query(query: str, *, explicit_cross_corpus: bool = False) -> RouteDeci
         cross_corpus=False,
         in_scope=True,
         reason="matched query language corpus",
+    )
+
+
+def asks_cross_corpus(query: str) -> bool:
+    lowered = query.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "compare",
+            "both english and turkish",
+            "english and turkish",
+            "turkish and english",
+            "karşılaştır",
+            "ingilizce ve türkçe",
+            "türkçe ve ingilizce",
+        )
     )
 
 

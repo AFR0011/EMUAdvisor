@@ -64,6 +64,21 @@ class AnswerTests(unittest.TestCase):
         self.assertIn("appears to conflict", answer.text)
         self.assertIn("verify", answer.text.lower())
 
+    def test_conflict_intent_is_not_answered_as_final_advice(self) -> None:
+        hit = chunk("doc:c1", "Article 4 says deadlines are announced by the academic unit.")
+
+        answer = build_extractive_answer("What if two rules give different deadlines?", [hit])
+
+        self.assertEqual(answer.mode, "show_conflict")
+        self.assertIn("conflict", answer.text.lower())
+
+    def test_official_clarification_intent_asks_for_scope(self) -> None:
+        hit = chunk("doc:c1", "Regulation evidence mentions the relevant academic unit.")
+
+        answer = build_extractive_answer("Which office should verify ambiguous regulation conflicts?", [hit])
+
+        self.assertEqual(answer.mode, "clarify")
+
     def test_progressive_answer_keeps_fallback_when_generation_fails(self) -> None:
         hit = chunk("doc:c1", "Article 4 Attendance requirement is stated here for students.")
 

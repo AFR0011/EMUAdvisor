@@ -58,6 +58,7 @@ h1 {
 }
 
 .panel,
+.metrics,
 .result {
   margin-top: 22px;
   padding: 24px;
@@ -86,7 +87,7 @@ select {
 
 .controls {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr 1fr auto auto;
   gap: 12px;
   align-items: center;
   margin-top: 14px;
@@ -115,6 +116,29 @@ button {
   font-weight: 700;
 }
 
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.metrics article {
+  padding: 16px;
+  border-radius: 18px;
+  background: white;
+}
+
+.metrics span {
+  display: block;
+  color: var(--navy);
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.metrics small {
+  color: var(--muted);
+}
+
 pre {
   white-space: pre-wrap;
   font: inherit;
@@ -131,7 +155,8 @@ pre {
 }
 
 @media (max-width: 700px) {
-  .controls {
+  .controls,
+  .metrics {
     grid-template-columns: 1fr;
   }
 }

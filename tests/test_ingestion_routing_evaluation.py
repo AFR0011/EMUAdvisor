@@ -99,17 +99,23 @@ class RoutingTests(unittest.TestCase):
         self.assertTrue(route.cross_corpus)
         self.assertEqual(route.corpora, ["regulations_en", "regulations_tr"])
 
+    def test_cross_corpus_and_regulation_course_questions_are_in_scope(self) -> None:
+        self.assertTrue(route_query("İngilizce ve Türkçe izin kurallarını karşılaştır.").cross_corpus)
+        self.assertTrue(route_query("What is the maximum course load?").in_scope)
+
     def test_out_of_scope_query_and_source_are_rejected(self) -> None:
         route = route_query("Tell me about today's campus events")
+        tr_route = route_query("Bugünkü etkinlikler nelerdir?")
 
         self.assertFalse(route.in_scope)
+        self.assertFalse(tr_route.in_scope)
         self.assertEqual(filter_chunks_for_route([{"corpus": "regulations_en"}], route), [])
         self.assertFalse(source_in_v1_scope("https://events.emu.edu.tr/today", source_type="html"))
 
 
 class EvaluationTests(unittest.TestCase):
     def test_seed_evaluation_set_is_machine_readable(self) -> None:
-        cases = load_cases(Path("eval_sets/v1_seed.jsonl"))
+        cases = load_cases(Path("eval_sets/v1_gold.jsonl"))
 
         self.assertGreaterEqual(len(cases), 30)
         self.assertIn("en", {case.language for case in cases})

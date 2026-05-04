@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-04
 
-This records implementation status for the 24-48 hour sprint plan. `Implemented` means local code paths and tests exist. It does not mean real EMU corpus quality has been validated.
+This records implementation status for the 24-48 hour sprint plan. `Implemented` means local code paths and tests exist. The presentable-demo pass now also has a live official-corpus crawl and seed-set metrics.
 
 | Sprint | Status | Evidence |
 |---|---|---|
@@ -11,8 +11,8 @@ This records implementation status for the 24-48 hour sprint plan. `Implemented`
 | 2 HTML ingestion | Implemented | `emu_advisor/html_ingest.py` emits canonical HTML chunks with traceability. |
 | 3 PDF ingestion | Implemented | `emu_advisor/pdf_ingest.py` extracts text/page metadata via local `pypdf`. |
 | 4 Language/scope routing | Implemented | `emu_advisor/routing.py` keeps EN/TR corpora separate by default. |
-| 5 Evaluation set v0 | Implemented | `eval_sets/v1_seed.jsonl` and `emu_advisor/evaluation.py`. |
-| 6 Multilingual embedding replacement | Implemented baseline | `emu_advisor/embeddings.py` defaults to local multilingual hash baseline, not English E5. |
+| 5 Evaluation set v0 | Implemented | `eval_sets/v1_gold.jsonl` and `emu_advisor/evaluation.py`. |
+| 6 Multilingual embedding replacement | Implemented baseline | `emu_advisor/embeddings.py` defaults to local multilingual hash baseline and supports optional Ollama `qwen3-embedding:4b`. |
 | 7 Qdrant foundation | Implemented offline fallback | `emu_advisor/store.py` provides Qdrant-compatible payload/vector semantics; real `qdrant_client` is not installed. |
 | 8 Hybrid retrieval | Implemented | `emu_advisor/retrieval.py` provides lexical+dense RRF retrieval with route filters. |
 | 9 Operating modes | Implemented | `emu_advisor/modes.py` defines cheap/balanced/expensive full-pipeline presets. |
@@ -20,23 +20,25 @@ This records implementation status for the 24-48 hour sprint plan. `Implemented`
 | 11 Citations/traceability | Implemented | `emu_advisor/citations.py` maps answers to chunk/source/version/page metadata. |
 | 12 Streaming/fallback | Implemented | `progressive_answer_events()` yields extractive answer before optional generation. |
 | 13 Admin snapshots | Implemented | `emu_advisor/admin.py` stages, diffs, activates, and exports snapshots. |
-| 14 UI/API | Implemented demo | `emu_advisor/server.py` plus `static/` EMU-branded demo UI. |
+| 14 UI/API | Implemented demo | `emu_advisor/server.py` plus `static/` EMU-branded demo UI with corpus and metrics cards. |
 | 15 Privacy logging | Implemented | `emu_advisor/audit_log.py` hashes session IDs and logs query diagnostics. |
 | 16 Load simulation | Implemented | `emu_advisor/load_test.py` simulates 50 active sessions in tests. |
-| 17 Release candidate | Implemented scaffold | `docs/RELEASE_CANDIDATE.md` records demo status, commands, and gaps. |
+| 17 Release candidate | Implemented demo | `docs/RELEASE_CANDIDATE.md` records live demo status, commands, measured metrics, and gaps. |
+| 18 Real-corpus demo metrics | Implemented | `emu_advisor/pipeline.py`, `emu_advisor/metrics.py`, ignored `artifacts/demo_corpus/latest`, and ignored `artifacts/metrics/latest`. |
 
 ## Validation Boundary
 
 Validated locally:
 
-- Unit tests for schema, ingestion, routing, retrieval, answer behavior, admin workflow, API, logging, and load simulation.
-- Evaluation seed file schema and categories.
+- Unit tests for schema, ingestion, pipeline, routing, retrieval, answer behavior, metrics, admin workflow, API, logging, and load simulation.
+- Evaluation gold file schema and categories.
 - FastAPI import and test-client smoke.
+- Live official crawl: 123 pages, 22 PDFs, 2,496 canonical chunks, 4 crawl errors.
+- Live seed-set metrics: top-5 retrieval 95.83%, response accuracy 83.33%, rejection accuracy 100%, clarification accuracy 100%, citation coverage 100%, extractive p50 84 ms / p95 145 ms.
 
 Not validated:
 
-- Live crawl of `mevzuat.emu.edu.tr`.
 - Production Qdrant server.
 - Reviewed 50-60 question gold set.
-- Real local LLM quality or GPU latency.
+- Real local LLM quality or GPU latency; bounded `qwen3:8b` generation attempts timed out in this environment.
 - Campus deployment constraints.

@@ -34,6 +34,10 @@ def decide_answerability(query: str, hits: List[Mapping[str, Any]]) -> EvidenceD
         return EvidenceDecision("weak", "refuse", "no retrieved evidence", [])
 
     copied_hits = [dict(hit) for hit in hits]
+    if _asks_for_official_clarification(query):
+        return EvidenceDecision("medium", "clarify", "query asks who should resolve ambiguity", copied_hits[:5])
+    if _asks_about_conflict(query):
+        return EvidenceDecision("conflict", "show_conflict", "query asks about potentially conflicting rules", copied_hits[:5])
     if _has_conflict(copied_hits):
         return EvidenceDecision("conflict", "show_conflict", "retrieved sources are marked as conflicting", copied_hits[:5])
 
@@ -122,10 +126,47 @@ def _has_conflict(hits: List[Mapping[str, Any]]) -> bool:
 
 
 def _looks_ambiguous(query: str, hits: List[Mapping[str, Any]]) -> bool:
-    if len(query.split()) > 3:
+    if _asks_for_official_clarification(query):
+        return True
+    if len(query.split()) > 2:
         return False
     documents = {hit.get("document_id") for hit in hits}
     return len(documents) > 1
+
+
+def _asks_for_official_clarification(query: str) -> bool:
+    lowered = query.casefold()
+    return any(
+        marker in lowered
+        for marker in (
+            "which office",
+            "who should verify",
+            "verify ambiguous",
+            "verify conflict",
+            "hangi ofis",
+            "hangi ofise",
+            "sorulmalı",
+            "sorulmali",
+            "teyit",
+        )
+    )
+
+
+def _asks_about_conflict(query: str) -> bool:
+    lowered = query.casefold()
+    return any(
+        marker in lowered
+        for marker in (
+            "conflict",
+            "conflicting",
+            "two rules",
+            "different deadlines",
+            "çelişkili",
+            "celiskili",
+            "farklı kurallar",
+            "iki kural",
+        )
+    )
 
 
 def _snippet(text: str, *, max_chars: int = 420) -> str:

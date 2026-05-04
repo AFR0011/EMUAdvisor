@@ -19,3 +19,4 @@ old/
 *.sqlite
 *.jsonl.tmp
 logs/
+artifacts/

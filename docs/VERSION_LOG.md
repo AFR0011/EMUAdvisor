@@ -43,6 +43,17 @@ Use this log for meaningful project milestones only.
 - Added root runtime and development dependency manifests.
 - Verified the local scaffold with 27 unit/API tests, evaluation seed validation, syntax scan, and FastAPI import smoke.
 
+## 2026-05-04 - Presentable Real-Corpus Demo Metrics
+
+- Added the root live crawl/build CLI for official `mevzuat.emu.edu.tr` HTML and linked PDFs.
+- Added corpus artifact loading, corpus status reporting, and active metrics API/UI cards.
+- Replaced the seed evaluation file with `eval_sets/v1_gold.jsonl` and added metrics reports for JSON, Markdown, per-case CSV, and human-review CSV.
+- Added local Ollama embedding/generation adapters while preserving hash/extractive fallbacks.
+- Built the live ignored corpus artifact: 123 pages, 22 PDFs, 2,496 chunks, 119 sources/documents.
+- Produced presentable seed-set metrics: top-5 retrieval 95.83%, response accuracy 83.33%, rejection accuracy 100%, citation coverage 100%, extractive p50 84 ms.
+- Recorded bounded `qwen3:8b` generation as unavailable in this environment because all attempted generated calls timed out.
+- Verified with 38 unit/API tests, canonical JSONL validation, evaluation validation, metrics run, API smoke, syntax scan, and FastAPI import smoke.
+
 ## Historical Old-Demo Git State
 
 - `cee36fc Add files via upload`

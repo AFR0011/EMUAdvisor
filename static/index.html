@@ -26,14 +26,27 @@
             <option value="balanced" selected>Balanced</option>
             <option value="expensive">Expensive</option>
           </select>
+          <select id="answer-style" aria-label="Answer style">
+            <option value="both" selected>Extractive + LLM</option>
+            <option value="extractive">Extractive only</option>
+            <option value="generated">LLM answer</option>
+          </select>
           <label class="check"><input id="cross" type="checkbox" /> Cross-corpus</label>
           <button id="ask">Ask</button>
         </div>
       </section>
 
+      <section class="metrics" aria-label="Demo metrics">
+        <article><span id="corpus-count">-</span><small>chunks</small></article>
+        <article><span id="top5">-</span><small>top-5 retrieval</small></article>
+        <article><span id="reject">-</span><small>rejection accuracy</small></article>
+        <article><span id="latency">-</span><small>p50 extractive latency</small></article>
+      </section>
+
       <section class="result" aria-live="polite">
         <div id="status">Ready.</div>
         <pre id="answer"></pre>
+        <pre id="generated"></pre>
         <div id="citations"></div>
       </section>
     </main>

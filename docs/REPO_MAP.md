@@ -26,13 +26,17 @@ EMUAdvisor/
     answer.py
     audit_log.py
     citations.py
+    corpus.py
     demo.py
     embeddings.py
     evaluation.py
+    generation.py
     html_ingest.py
     load_test.py
+    metrics.py
     modes.py
     pdf_ingest.py
+    pipeline.py
     retrieval.py
     routing.py
     server.py
@@ -41,7 +45,8 @@ EMUAdvisor/
     text.py
     validate_jsonl.py
   eval_sets/
-    v1_seed.jsonl
+    v1_gold.jsonl
+  artifacts/              # ignored generated crawl, corpus, metrics, and review outputs
   static/
     index.html
     style.css
@@ -93,13 +98,19 @@ EMUAdvisor/
 - `docs/SCHEMA.md`: canonical document/chunk schema contract and validation usage.
 - `docs/SPRINT_PLAN.md`: 24-48 hour implementation and testing sequence.
 - `docs/SPRINT_STATUS.md`: sprint implementation status and validation boundary.
-- `docs/RELEASE_CANDIDATE.md`: demo scaffold release notes and remaining production gaps.
+- `docs/RELEASE_CANDIDATE.md`: live demo release notes, measured metrics, and remaining production gaps.
 - `emu_advisor/schema.py`: dependency-free canonical schema validation and legacy chunk mapping.
 - `emu_advisor/validate_jsonl.py`: JSONL validator CLI for canonical records.
 - `emu_advisor/html_ingest.py` and `pdf_ingest.py`: canonical source ingestion.
+- `emu_advisor/pipeline.py`: polite official-host crawl/build CLI for canonical demo artifacts.
+- `emu_advisor/corpus.py`: active corpus artifact loader, fixture fallback, and corpus status reporting.
+- `emu_advisor/metrics.py`: evaluation runner that emits JSON/Markdown/CSV metrics and human-review CSV.
+- `emu_advisor/generation.py`: local Ollama generated-answer adapter with extractive fallback.
 - `emu_advisor/retrieval.py`, `store.py`, `embeddings.py`, and `modes.py`: local retrieval stack.
 - `emu_advisor/answer.py` and `citations.py`: answerability, fallback, conflict, and citations.
 - `emu_advisor/server.py` and `static/`: FastAPI demo and UI.
+- `eval_sets/v1_gold.jsonl`: current 30-case bilingual seed gold set.
+- `artifacts/`: ignored generated crawl metadata, canonical chunks, snapshots, metrics reports, and review CSVs.
 - `tests/`: unit tests and schema fixtures.
 - `.old/*.py`: old-demo ingestion, processing, indexing, retrieval, reranking, and evaluation scripts.
 - `.old/backend/`: FastAPI backend, RAG adapter, configuration, and static frontend.
@@ -107,6 +118,21 @@ EMUAdvisor/
 - `.old/backend/requirements.txt`: minimal backend dependency list.
 
 ## Pipeline Data Flow
+
+```text
+Official EMU regulation HTML/PDF sources
+  -> emu_advisor.pipeline
+  -> artifacts/demo_corpus/latest/raw
+  -> artifacts/demo_corpus/latest/chunks.jsonl
+  -> emu_advisor.corpus
+  -> emu_advisor.retrieval
+  -> emu_advisor.answer and optional emu_advisor.generation
+  -> emu_advisor.server and static UI
+  -> emu_advisor.metrics
+  -> artifacts/metrics/latest/{metrics.json,metrics.md,per_case.csv,human_review.csv}
+```
+
+Legacy reference flow:
 
 ```text
 Official EMU regulation HTML/PDF sources
@@ -140,22 +166,26 @@ Official EMU regulation HTML/PDF sources
 - Language: Python.
 - Active root package: `emu_advisor`.
 - Root test runner: `python -m unittest discover -s tests`.
+- Root corpus build: `python -m emu_advisor.pipeline build --seed https://mevzuat.emu.edu.tr/content.htm --seed https://mevzuat.emu.edu.tr/Content-en.htm --out artifacts\demo_corpus\latest --max-pages 1000 --include-pdfs`.
+- Root metrics run: `python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\latest`.
 - Backend framework: FastAPI with Uvicorn.
 - Frontend: static HTML, CSS, and JavaScript.
-- Crawl storage: SQLite plus raw files.
+- Crawl storage: ignored raw files plus canonical JSONL artifacts.
 - Intermediate data: JSONL and JSON reports.
 - Existing retrieval stack: BM25 plus dense embeddings with FAISS when available, numpy fallback otherwise.
-- Existing model tooling: `sentence-transformers`, `transformers`, optional local Ollama.
+- Active root retrieval stack: local lexical+dense hybrid retrieval with hash fallback and optional Ollama embeddings.
+- Existing old-demo model tooling: `sentence-transformers`, `transformers`, optional local Ollama.
+- Root runtime dependencies: FastAPI, Uvicorn, Pydantic, HTTPX, and pypdf.
 - Full old-demo dependencies: FastAPI, Uvicorn, Pydantic, Requests, HTTPX, BeautifulSoup, charset-normalizer, numpy, faiss-cpu, sentence-transformers, transformers.
 - `torch` is intentionally not pinned because CUDA wheels are platform-specific.
 
 ## Active Versus Legacy
 
 - Active product direction is the root system spec.
-- Active root implementation covers the local demo pipeline from ingestion through answer/UI scaffolding.
+- Active root implementation covers the live demo pipeline from crawl/build through metrics, answer/API, and UI.
 - Legacy runnable code is archived under `.old/`.
 - Old-demo READMEs are useful for commands but do not override the current spec.
-- Generated folders such as `mevzuat_crawl/`, `eval/`, `old/`, and `snapshots/` are ignored by the old-demo `.gitignore` and are not present in this workspace.
+- Generated root `artifacts/` outputs are ignored by Git and currently hold the live demo corpus and metrics.
 
 ## Known Drift
 
@@ -171,7 +201,10 @@ Official EMU regulation HTML/PDF sources
 ## Entry Points
 
 - Full legacy pipeline reference: run numbered scripts in `.old/` in sequence.
+- Root corpus build: `python -m emu_advisor.pipeline build ...`.
+- Root metrics: `python -m emu_advisor.metrics run ...`.
 - Retrieval smoke: `6.TestRetrieve.py`, `7.RetrieveHybrid.py`, or `8.RerankMultilingualV7_3.py` with a built index.
-- Evaluation: `EvaluateRetrieval.py` with a built index and query set.
-- Backend: `python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000` from `.old/`.
+- Legacy evaluation: `EvaluateRetrieval.py` with a built index and query set.
+- Backend: `python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000` from the root repo.
+- Legacy backend: `python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000` from `.old/`.
 - UI: `http://127.0.0.1:8000` after backend startup.

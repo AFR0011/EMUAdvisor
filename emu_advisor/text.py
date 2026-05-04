@@ -7,7 +7,7 @@ import unicodedata
 from typing import List
 
 
-TOKEN_RE = re.compile(r"[\wçğıöşüÇĞİÖŞÜ]+", re.UNICODE)
+TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
 def normalize_text(text: str) -> str:

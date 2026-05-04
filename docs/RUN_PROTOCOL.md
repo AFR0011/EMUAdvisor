@@ -27,10 +27,10 @@ python -m venv .venv
 pip install -r backend\requirements.txt
 ```
 
-For full pipeline, retrieval, reranking, and evaluation work:
+For legacy full pipeline, retrieval, reranking, and evaluation work:
 
 ```powershell
-pip install -r requirements-full.txt
+pip install -r .old\requirements-full.txt
 ```
 
 Install `torch` separately for the target CUDA/CPU environment. Do not assume a CUDA wheel.
@@ -99,7 +99,7 @@ print("syntax ok")
 ```powershell
 python -m unittest discover -s tests
 python -m emu_advisor.validate_jsonl tests\fixtures\canonical_chunks.valid.jsonl --kind chunk
-python -m emu_advisor.evaluation eval_sets\v1_seed.jsonl
+python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
 python -c "from emu_advisor.server import app; print(app.title)"
 ```
 
@@ -110,7 +110,28 @@ cd "C:\Users\Ali\Desktop\EMUAdvisor\.old"
 python -c "from backend.server import app; print(app.title)"
 ```
 
-5. Pipeline build smoke, when network access to official EMU sources is allowed
+5. Root demo corpus build, when network access to official EMU sources is allowed
+
+```powershell
+python -m emu_advisor.pipeline build --seed https://mevzuat.emu.edu.tr/content.htm --seed https://mevzuat.emu.edu.tr/Content-en.htm --out artifacts\demo_corpus\latest --max-pages 1000 --include-pdfs
+python -m emu_advisor.validate_jsonl artifacts\demo_corpus\latest\chunks.jsonl --kind chunk
+```
+
+Generated artifacts are ignored by Git and written under `artifacts/`.
+
+6. Root metrics gate, when a built corpus artifact exists
+
+```powershell
+python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\latest
+```
+
+To attempt local generated-mode metrics with a bounded Ollama timeout:
+
+```powershell
+python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\latest --include-generation --ollama-model qwen3:8b --ollama-timeout-s 2
+```
+
+7. Legacy pipeline reference, when old-demo commands are needed
 
 ```powershell
 python 1.BasicCrawlV2.py --out mevzuat_crawl --seed https://mevzuat.emu.edu.tr/content.htm --max-pages 20
@@ -123,7 +144,7 @@ python 5.3.PostprocessChunks.py --in chunks_dedup.jsonl --out chunks_post.jsonl 
 python 6.BuildIndex.py --in chunks_post.jsonl --out-dir index_v4 --embed-model intfloat/multilingual-e5-base --device cpu
 ```
 
-6. Retrieval smoke, when an index exists
+8. Legacy retrieval smoke, when an old-demo index exists
 
 ```powershell
 python 6.TestRetrieve.py --index-dir index_v4 --lang en --q "attendance requirement" --k 8
@@ -131,19 +152,20 @@ python 7.RetrieveHybrid.py --index-dir index_v4 --q "salary scales" --lang auto 
 python 8.RerankMultilingualV7_3.py --index-dir index_v4 --q "high honour criteria" --lang auto --k 8
 ```
 
-7. Backend/API/UI smoke, when an index and backend dependencies exist
+9. Root Backend/API/UI smoke
 
 ```powershell
-python -m uvicorn backend.server:app --host 127.0.0.1 --port 8000
+python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
 ```
 
 Then check:
 
-- `GET http://127.0.0.1:8000/whoami`
+- `GET http://127.0.0.1:8000/metrics`
+- `GET http://127.0.0.1:8000/corpus/status`
 - `POST http://127.0.0.1:8000/ask`
 - Browser load at `http://127.0.0.1:8000`
 
-8. Evaluation gate, when a built index and query set exist
+10. Legacy evaluation gate, when an old-demo index and query set exist
 
 ```powershell
 python EvaluateRetrieval.py --index-dir index_v4 --out eval_run --k 8
@@ -154,7 +176,8 @@ For V1 readiness, evaluate 50-60 English/Turkish questions and verify that corre
 ## Runtime Service Notes
 
 - Ollama is optional for old-demo answer synthesis but required when `backend/config.json` has `llm.enabled` set to `true`.
-- Current config expects Ollama at `http://localhost:11434`.
+- Root generated-answer mode defaults to local Ollama model `qwen3:8b` at `http://localhost:11434` with `EMU_ADVISOR_LLM_TIMEOUT_S=8` unless overridden.
+- Root demo indexing can use local Ollama embeddings with `EMU_ADVISOR_EMBEDDING=ollama`; otherwise it uses the deterministic hash fallback.
 - Qdrant server integration is still a target architecture direction. Root code currently includes an offline Qdrant-compatible local store because `qdrant_client` is not installed in this environment.
 
 ## Demo UI
@@ -170,5 +193,5 @@ Open `http://127.0.0.1:8000`.
 - Syntax checks validate parseability only.
 - Backend import checks validate import/startup only.
 - Local retrieval smoke checks validate code paths and demo fixtures; they do not prove real corpus answer quality.
-- Evaluation results are the only acceptable evidence for retrieval-quality claims.
+- Live `emu_advisor.metrics` outputs are the acceptable evidence for current demo retrieval, refusal, citation, and latency claims.
 - Manual UI/API checks are required before claiming a user-facing flow works.
