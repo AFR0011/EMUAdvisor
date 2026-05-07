@@ -27,10 +27,16 @@ class OllamaGenerator:
         model: str = DEFAULT_OLLAMA_LLM,
         base_url: str = "http://localhost:11434",
         timeout_s: float = 90.0,
+        num_predict: int = 320,
+        num_ctx: int = 4096,
+        keep_alive: str = "10m",
     ) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
+        self.num_predict = num_predict
+        self.num_ctx = num_ctx
+        self.keep_alive = keep_alive
 
     def generate(self, query: str, hits: List[Mapping[str, Any]]) -> GenerationResult:
         import httpx
@@ -44,7 +50,9 @@ class OllamaGenerator:
                     "model": self.model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 700},
+                    "think": False,
+                    "keep_alive": self.keep_alive,
+                    "options": {"temperature": 0.0, "num_predict": self.num_predict, "num_ctx": self.num_ctx},
                 },
                 timeout=self.timeout_s,
             )
@@ -56,6 +64,49 @@ class OllamaGenerator:
             latency_ms = int((time.perf_counter() - started) * 1000)
             return GenerationResult(text="", model=self.model, latency_ms=latency_ms, first_token_ms=None, error=str(exc))
 
+    def model_available(self, *, timeout_s: float = 1.0) -> bool:
+        return bool(self.status(timeout_s=timeout_s).get("model_available"))
+
+    def status(self, *, timeout_s: float = 2.0, smoke: bool = False) -> Dict[str, Any]:
+        import httpx
+
+        started = time.perf_counter()
+        status: Dict[str, Any] = {
+            "base_url": self.base_url,
+            "model": self.model,
+            "service_available": False,
+            "model_available": False,
+            "smoke_ok": None,
+            "latency_ms": None,
+            "error": None,
+        }
+        try:
+            response = httpx.get(f"{self.base_url}/api/tags", timeout=timeout_s)
+            response.raise_for_status()
+            models = response.json().get("models", [])
+            names = {str(item.get("name") or item.get("model")) for item in models if isinstance(item, dict)}
+            status["service_available"] = True
+            status["model_available"] = self.model in names
+            if smoke and status["model_available"]:
+                smoke_response = httpx.post(
+                    f"{self.base_url}/api/generate",
+                    json={
+                        "model": self.model,
+                        "prompt": "Reply with OK.",
+                        "stream": False,
+                        "think": False,
+                        "keep_alive": self.keep_alive,
+                        "options": {"temperature": 0, "num_predict": 16, "num_ctx": 512},
+                    },
+                    timeout=timeout_s,
+                )
+                smoke_response.raise_for_status()
+                status["smoke_ok"] = bool(str(smoke_response.json().get("response", "")).strip())
+        except Exception as exc:
+            status["error"] = str(exc)
+        status["latency_ms"] = int((time.perf_counter() - started) * 1000)
+        return status
+
     def stream(self, query: str, hits: List[Mapping[str, Any]]) -> Iterator[Dict[str, Any]]:
         import httpx
 
@@ -66,7 +117,14 @@ class OllamaGenerator:
             with httpx.stream(
                 "POST",
                 f"{self.base_url}/api/generate",
-                json={"model": self.model, "prompt": prompt, "stream": True, "options": {"temperature": 0.1}},
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": True,
+                    "think": False,
+                    "keep_alive": self.keep_alive,
+                    "options": {"temperature": 0.0, "num_predict": self.num_predict, "num_ctx": self.num_ctx},
+                },
                 timeout=self.timeout_s,
             ) as response:
                 response.raise_for_status()
@@ -103,6 +161,7 @@ def build_prompt(query: str, hits: List[Mapping[str, Any]]) -> str:
         evidence.append(f"[{idx}] {citation}\n{hit.get('chunk_text')}")
     return (
         "You are a local-only EMU Regulation Assistant. Answer only from the cited evidence. "
-        "If evidence is incomplete, say so. Do not claim to be the university's final official answer.\n\n"
+        "If evidence is incomplete, say so. Do not claim to be the university's final official answer. "
+        "Do not show hidden reasoning or chain-of-thought; write only the final concise answer.\n\n"
         f"Question: {query}\n\nEvidence:\n" + "\n\n".join(evidence) + "\n\nAnswer with citations by bracket number."
     )

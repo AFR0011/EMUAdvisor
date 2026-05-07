@@ -4,10 +4,12 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from emu_advisor.corpus import load_chunks_jsonl
+from emu_advisor.evaluation import load_cases, validate_case_set
 from emu_advisor.generation import GenerationResult, OllamaGenerator
-from emu_advisor.metrics import run_evaluation
+from emu_advisor.metrics import run_all_modes, run_evaluation
 from emu_advisor.pipeline import _decode_html, build_corpus, discover_links, is_allowed_crawl_url, normalize_url
 
 
@@ -99,88 +101,40 @@ class PipelineTests(unittest.TestCase):
 
 
 class MetricsTests(unittest.TestCase):
-    def test_metrics_runner_writes_dashboard_and_review_artifacts(self) -> None:
+    def test_metrics_runner_writes_dashboard_review_and_failure_analysis_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            chunks = root / "chunks.jsonl"
-            chunks.write_text(
-                json.dumps(
-                    {
-                        "document_id": "en:html:attendance",
-                        "chunk_id": "en-attendance:c1",
-                        "parent_document_id": None,
-                        "source_type": "html",
-                        "source_url": "https://mevzuat.emu.edu.tr/content/en/attendance.htm",
-                        "source_title": "Attendance",
-                        "language": "en",
-                        "corpus": "regulations_en",
-                        "access_tier": "public",
-                        "effective_date": None,
-                        "last_crawled_at": "2026-05-04T08:00:00Z",
-                        "version_hash": "hash",
-                        "section_path": "Article 1",
-                        "article_number": "1",
-                        "page_number": None,
-                        "chunk_text": "Students must meet the attendance requirement.",
-                        "metadata": {},
-                    }
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            cases = root / "cases.jsonl"
-            cases.write_text(
-                "\n".join(
-                    [
-                        json.dumps(
-                            {
-                                "case_id": "A1",
-                                "question": "attendance requirement",
-                                "language": "en",
-                                "expected_behavior": "answer",
-                                "expected_corpus": "regulations_en",
-                                "expected_document_id": "en:html:attendance",
-                                "expected_chunk_id": None,
-                                "expected_source_url": None,
-                                "expected_answer_keywords": ["attendance"],
-                                "category": "direct_rule_lookup",
-                                "is_correct": None,
-                                "citation_ok": None,
-                                "notes": "",
-                            }
-                        ),
-                        json.dumps(
-                            {
-                                "case_id": "R1",
-                                "question": "Tell me about campus events",
-                                "language": "en",
-                                "expected_behavior": "refuse",
-                                "expected_corpus": None,
-                                "expected_document_id": None,
-                                "expected_chunk_id": None,
-                                "expected_source_url": None,
-                                "expected_answer_keywords": [],
-                                "category": "out_of_scope",
-                                "is_correct": None,
-                                "citation_ok": None,
-                                "notes": "",
-                            }
-                        ),
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            chunks, cases = _write_metrics_fixture(root)
             out = root / "metrics"
 
             summary = run_evaluation(cases_path=cases, chunks_path=chunks, out_dir=out)
 
-            self.assertEqual(summary["cases"], 2)
+            self.assertEqual(summary["cases"], 60)
             self.assertEqual(summary["retrieval_top5"], 1.0)
+            self.assertEqual(summary["mode"], "balanced")
+            self.assertIn("mode_preset", summary)
+            self.assertIn("total_score", summary)
+            self.assertIn("failure_counts", summary)
+            self.assertIn("category_metrics", summary)
+            self.assertIn("worst_failed_cases", summary)
             self.assertTrue((out / "metrics.json").exists())
             self.assertTrue((out / "per_case.csv").exists())
             self.assertTrue((out / "human_review.csv").exists())
             self.assertTrue((out / "metrics.md").exists())
+
+    def test_metrics_runner_writes_all_mode_comparison(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chunks, cases = _write_metrics_fixture(root)
+            out = root / "mode_comparison"
+
+            comparison = run_all_modes(cases_path=cases, chunks_path=chunks, out_dir=out)
+
+            self.assertEqual(set(comparison["results"]), {"cheap", "balanced", "expensive"})
+            self.assertTrue((out / "comparison.json").exists())
+            self.assertTrue((out / "comparison.md").exists())
+            self.assertTrue((out / "cheap" / "metrics.json").exists())
+            self.assertIn("ranking", comparison)
 
     def test_generated_metrics_mark_failed_local_model_unavailable(self) -> None:
         class FailingGenerator:
@@ -195,75 +149,7 @@ class MetricsTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            chunks = root / "chunks.jsonl"
-            chunks.write_text(
-                json.dumps(
-                    {
-                        "document_id": "en:html:attendance",
-                        "chunk_id": "en-attendance:c1",
-                        "parent_document_id": None,
-                        "source_type": "html",
-                        "source_url": "https://mevzuat.emu.edu.tr/content/en/attendance.htm",
-                        "source_title": "Attendance",
-                        "language": "en",
-                        "corpus": "regulations_en",
-                        "access_tier": "public",
-                        "effective_date": None,
-                        "last_crawled_at": "2026-05-04T08:00:00Z",
-                        "version_hash": "hash",
-                        "section_path": "Article 1",
-                        "article_number": "1",
-                        "page_number": None,
-                        "chunk_text": "Students must meet the attendance requirement.",
-                        "metadata": {},
-                    }
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            cases = root / "cases.jsonl"
-            cases.write_text(
-                "\n".join(
-                    [
-                        json.dumps(
-                            {
-                                "case_id": "A1",
-                                "question": "attendance requirement",
-                                "language": "en",
-                                "expected_behavior": "answer",
-                                "expected_corpus": "regulations_en",
-                                "expected_document_id": "en:html:attendance",
-                                "expected_chunk_id": None,
-                                "expected_source_url": None,
-                                "expected_answer_keywords": ["attendance"],
-                                "category": "direct_rule_lookup",
-                                "is_correct": None,
-                                "citation_ok": None,
-                                "notes": "",
-                            }
-                        ),
-                        json.dumps(
-                            {
-                                "case_id": "R1",
-                                "question": "Tell me about campus events",
-                                "language": "en",
-                                "expected_behavior": "refuse",
-                                "expected_corpus": None,
-                                "expected_document_id": None,
-                                "expected_chunk_id": None,
-                                "expected_source_url": None,
-                                "expected_answer_keywords": [],
-                                "category": "out_of_scope",
-                                "is_correct": None,
-                                "citation_ok": None,
-                                "notes": "",
-                            }
-                        ),
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            chunks, cases = _write_metrics_fixture(root)
 
             summary = run_evaluation(
                 cases_path=cases,
@@ -273,11 +159,58 @@ class MetricsTests(unittest.TestCase):
                 generator=FailingGenerator(),
             )
 
-            self.assertEqual(summary["generated_cases_attempted"], 1)
+            self.assertEqual(summary["generated_cases_attempted"], 48)
             self.assertEqual(summary["generated_cases_completed"], 0)
-            self.assertEqual(summary["generated_error_cases"], 1)
+            self.assertEqual(summary["generated_error_cases"], 48)
             self.assertFalse(summary["generated_available"])
             self.assertIsNone(summary["generated_latency_p50_ms"])
+
+    def test_generated_metrics_skip_generation_when_status_probe_fails(self) -> None:
+        class UnavailableGenerator:
+            model = "qwen3:8b"
+            timeout_s = 2.0
+
+            def status(self, *, timeout_s, smoke):
+                return {"model_available": False, "smoke_ok": False, "error": "missing model"}
+
+            def generate(self, _question, _hits):
+                raise AssertionError("generation should be skipped when smoke probe fails")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            chunks, cases = _write_metrics_fixture(root)
+
+            summary = run_evaluation(
+                cases_path=cases,
+                chunks_path=chunks,
+                out_dir=root / "metrics",
+                include_generation=True,
+                generator=UnavailableGenerator(),
+            )
+
+            self.assertEqual(summary["generated_cases_attempted"], 0)
+            self.assertFalse(summary["generated_available"])
+            self.assertIn("local Ollama model unavailable", summary["generated_unavailable_reason"])
+
+    def test_case_set_validation_rejects_small_or_unlabeled_sets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _chunks, cases = _write_metrics_fixture(root)
+            loaded = load_cases(cases)
+            validate_case_set(loaded)
+
+            with self.assertRaisesRegex(ValueError, "at least 50"):
+                validate_case_set(loaded[:49])
+
+            missing_label = [case for case in loaded]
+            payload = missing_label[0].__dict__.copy()
+            payload["expected_chunk_ids"] = []
+            payload["expected_source_urls"] = []
+            payload["expected_chunk_id"] = None
+            payload["expected_source_url"] = None
+            bad_cases = [type(missing_label[0])(**payload), *missing_label[1:]]
+            with self.assertRaisesRegex(ValueError, "source or chunk labels"):
+                validate_case_set(bad_cases)
 
     def test_metrics_rejects_mojibake_cases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -293,6 +226,173 @@ class GenerationTests(unittest.TestCase):
 
         self.assertEqual(result.text, "")
         self.assertIsNotNone(result.error)
+
+    def test_ollama_status_reports_unavailable_service(self) -> None:
+        status = OllamaGenerator(base_url="http://127.0.0.1:9", timeout_s=0.1).status(timeout_s=0.1)
+
+        self.assertFalse(status["service_available"])
+        self.assertFalse(status["model_available"])
+        self.assertIsNotNone(status["error"])
+
+    def test_ollama_status_reports_available_model_and_smoke(self) -> None:
+        tags_response = Mock()
+        tags_response.json.return_value = {"models": [{"name": "qwen3:8b"}]}
+        tags_response.raise_for_status.return_value = None
+        generate_response = Mock()
+        generate_response.json.return_value = {"response": "OK"}
+        generate_response.raise_for_status.return_value = None
+
+        with patch("httpx.get", return_value=tags_response), patch("httpx.post", return_value=generate_response):
+            status = OllamaGenerator(model="qwen3:8b").status(timeout_s=0.1, smoke=True)
+
+        self.assertTrue(status["service_available"])
+        self.assertTrue(status["model_available"])
+        self.assertTrue(status["smoke_ok"])
+
+
+def _write_metrics_fixture(root: Path) -> tuple[Path, Path]:
+    chunks = root / "chunks.jsonl"
+    en_chunk = _chunk(
+        document_id="en:html:attendance",
+        chunk_id="en-attendance:c1",
+        source_url="https://mevzuat.emu.edu.tr/content/en/attendance.htm",
+        source_title="Attendance",
+        language="en",
+        corpus="regulations_en",
+        text="Students must meet the attendance requirement. Academic staff salaries and scales are cited here.",
+    )
+    tr_chunk = _chunk(
+        document_id="tr:html:devam",
+        chunk_id="tr-devam:c1",
+        source_url="https://mevzuat.emu.edu.tr/content/tr/devam.htm",
+        source_title="Devam",
+        language="tr",
+        corpus="regulations_tr",
+        text="Öğrenciler devam zorunluluğuna uyar. Akademik personel maaş ve barem kuralları burada belirtilir.",
+    )
+    chunks.write_text(
+        json.dumps(en_chunk, ensure_ascii=False) + "\n" + json.dumps(tr_chunk, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    records = []
+    records.extend(
+        _case(
+            f"EN-A{i:02d}",
+            "attendance requirement",
+            "en",
+            "answer",
+            expected_corpus="regulations_en",
+            chunk=en_chunk,
+        )
+        for i in range(1, 25)
+    )
+    records.extend(
+        _case(
+            f"TR-A{i:02d}",
+            "devam zorunluluğu",
+            "tr",
+            "answer",
+            expected_corpus="regulations_tr",
+            chunk=tr_chunk,
+        )
+        for i in range(1, 25)
+    )
+    records.extend(_case(f"EN-R{i}", "Tell me about campus events", "en", "refuse") for i in range(1, 3))
+    records.extend(_case(f"TR-R{i}", "Bugünkü etkinlikler nelerdir?", "tr", "refuse") for i in range(1, 3))
+    records.extend(_case(f"EN-C{i}", "Which office should verify ambiguous attendance evidence?", "en", "clarify") for i in range(1, 3))
+    records.extend(_case(f"TR-C{i}", "Hangi ofise sorulmalı: devam mı burs mu?", "tr", "clarify") for i in range(1, 3))
+    records.extend(
+        _case(
+            f"EN-X{i}",
+            "Compare English and Turkish attendance rules; are the two rules conflicting?",
+            "en",
+            "conflict",
+            expected_corpora=["regulations_en", "regulations_tr"],
+            chunks=[en_chunk, tr_chunk],
+        )
+        for i in range(1, 3)
+    )
+    records.extend(
+        _case(
+            f"TR-X{i}",
+            "İngilizce ve Türkçe devam kurallarını karşılaştır; iki kural çelişkili mi?",
+            "tr",
+            "conflict",
+            expected_corpora=["regulations_en", "regulations_tr"],
+            chunks=[tr_chunk, en_chunk],
+        )
+        for i in range(1, 3)
+    )
+
+    cases = root / "cases.jsonl"
+    cases.write_text("\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n", encoding="utf-8")
+    return chunks, cases
+
+
+def _chunk(
+    *,
+    document_id: str,
+    chunk_id: str,
+    source_url: str,
+    source_title: str,
+    language: str,
+    corpus: str,
+    text: str,
+) -> dict:
+    return {
+        "document_id": document_id,
+        "chunk_id": chunk_id,
+        "parent_document_id": None,
+        "source_type": "html",
+        "source_url": source_url,
+        "source_title": source_title,
+        "language": language,
+        "corpus": corpus,
+        "access_tier": "public",
+        "effective_date": None,
+        "last_crawled_at": "2026-05-04T08:00:00Z",
+        "version_hash": "hash",
+        "section_path": "Article 1",
+        "article_number": "1",
+        "page_number": None,
+        "chunk_text": text,
+        "metadata": {},
+    }
+
+
+def _case(
+    case_id: str,
+    question: str,
+    language: str,
+    behavior: str,
+    *,
+    expected_corpus: str | None = None,
+    expected_corpora: list[str] | None = None,
+    chunk: dict | None = None,
+    chunks: list[dict] | None = None,
+) -> dict:
+    chunks = chunks or ([chunk] if chunk else [])
+    first = chunks[0] if chunks else None
+    return {
+        "case_id": case_id,
+        "question": question,
+        "language": language,
+        "expected_behavior": behavior,
+        "expected_corpus": expected_corpus,
+        "expected_corpora": expected_corpora or ([expected_corpus] if expected_corpus else []),
+        "expected_document_id": first["document_id"] if first else None,
+        "expected_chunk_id": first["chunk_id"] if first else None,
+        "expected_chunk_ids": [item["chunk_id"] for item in chunks],
+        "expected_source_url": first["source_url"] if first else None,
+        "expected_source_urls": [item["source_url"] for item in chunks],
+        "expected_answer_keywords": ["attendance"] if language == "en" and behavior == "answer" else ["devam"] if behavior == "answer" else [],
+        "category": "fixture",
+        "review_status": "assistant_curated_pending_human_review",
+        "is_correct": None,
+        "citation_ok": None,
+        "notes": "",
+    }
 
 
 if __name__ == "__main__":

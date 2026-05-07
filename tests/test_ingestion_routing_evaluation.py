@@ -53,6 +53,39 @@ class HtmlIngestionTests(unittest.TestCase):
                 )
             )
 
+    def test_html_ingestion_preserves_table_rows_and_salary_derived_facts(self) -> None:
+        html = """
+        <html>
+          <head><title>Academic Staff Salary</title></head>
+          <body>
+            <h2>II. COLUMN</h2>
+            <table>
+              <tr><th>POSITION</th><th>SCALE</th><th>1</th><th>14</th></tr>
+              <tr><td><span>ASSIST. PROFESSOR</span></td><td>5</td><td>107,900.00</td><td>145,600.00</td></tr>
+              <tr><td>PROFESSOR</td><td>7</td><td>159,600.00</td><td>188,200.00</td></tr>
+            </table>
+          </body>
+        </html>
+        """
+
+        chunks = ingest_html_document(
+            HtmlDocumentInput(
+                html=html,
+                source_url="https://mevzuat.emu.edu.tr/6-1_StaffingEmploymentAcademicStaff.htm",
+                language="en",
+                last_crawled_at="2026-05-05T08:00:00Z",
+            )
+        )
+
+        table_rows = [chunk for chunk in chunks if chunk["metadata"].get("evidence_kind") == "table_row"]
+        derived = [chunk for chunk in chunks if chunk["metadata"].get("evidence_kind") == "derived_fact"]
+
+        self.assertTrue(any("ASSIST. PROFESSOR" in chunk["chunk_text"] for chunk in table_rows))
+        self.assertTrue(any("Professor uses scale 7" in chunk["chunk_text"] for chunk in derived))
+        self.assertTrue(any("Assistant Professor uses scale 5" in chunk["chunk_text"] for chunk in derived))
+        self.assertTrue(any("107,900.00" in chunk["chunk_text"] and "188,200.00" in chunk["chunk_text"] for chunk in derived))
+        self.assertTrue(all("table_id" in chunk["metadata"] for chunk in table_rows))
+
 
 class PdfIngestionTests(unittest.TestCase):
     def test_pdf_ingestion_preserves_page_number_and_article(self) -> None:
@@ -117,11 +150,27 @@ class EvaluationTests(unittest.TestCase):
     def test_seed_evaluation_set_is_machine_readable(self) -> None:
         cases = load_cases(Path("eval_sets/v1_gold.jsonl"))
 
-        self.assertGreaterEqual(len(cases), 30)
-        self.assertIn("en", {case.language for case in cases})
-        self.assertIn("tr", {case.language for case in cases})
-        self.assertIn("refuse", {case.expected_behavior for case in cases})
-        self.assertIn("conflict", {case.expected_behavior for case in cases})
+        self.assertEqual(len(cases), 60)
+        self.assertEqual(sum(1 for case in cases if case.language == "en"), 30)
+        self.assertEqual(sum(1 for case in cases if case.language == "tr"), 30)
+        self.assertEqual(sum(1 for case in cases if case.expected_behavior == "answer"), 48)
+        self.assertEqual(sum(1 for case in cases if case.expected_behavior == "refuse"), 4)
+        self.assertEqual(sum(1 for case in cases if case.expected_behavior == "clarify"), 4)
+        self.assertEqual(sum(1 for case in cases if case.expected_behavior == "conflict"), 4)
+        self.assertEqual({case.review_status for case in cases}, {"assistant_curated_pending_human_review"})
+        for case in cases:
+            if case.expected_behavior in {"answer", "conflict"}:
+                self.assertTrue(case.expected_chunk_ids or case.expected_source_urls)
+
+    def test_hard_regression_set_is_machine_readable(self) -> None:
+        cases = load_cases(Path("eval_sets/v1_hard.jsonl"))
+
+        self.assertEqual(len(cases), 50)
+        self.assertEqual(sum(1 for case in cases if case.language == "en"), 25)
+        self.assertEqual(sum(1 for case in cases if case.language == "tr"), 25)
+        self.assertGreaterEqual(sum(1 for case in cases if case.category == "salary_table"), 20)
+        self.assertGreaterEqual(sum(1 for case in cases if case.category == "scholarship_bundle"), 20)
+        self.assertEqual({case.review_status for case in cases}, {"assistant_curated_hard_regression"})
 
 
 if __name__ == "__main__":

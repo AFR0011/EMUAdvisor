@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional
 
 from .citations import Citation, unique_citations
 from .routing import route_query
-from .text import tokenize
+from .text import normalize_text, signal_terms, tokenize
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,48 @@ class Answer:
     text: str
     citations: List[Citation]
     decision: EvidenceDecision
+    answer_type: str = "direct"
+    evidence_groups: List[Dict[str, Any]] = field(default_factory=list)
+
+
+SCHOLARSHIP_EVIDENCE_GROUPS = [
+    {
+        "key": "entrance_incentive",
+        "title": "Entrance, incentive, and placement scholarships",
+        "query": "EMU entrance incentive scholarship first 5000 tuition dormitory pocket money scholarship",
+        "query_tr": "tesvik bursu giris bursu ilk 5000 burs yurt cep harcligi ogrenim ucreti",
+    },
+    {
+        "key": "international_discount",
+        "title": "International scholarships and tuition discounts",
+        "query": "international student scholarship tuition fee discount exemption scholarship EMU",
+        "query_tr": "uluslararasi ogrenci burs indirim ogrenim ucreti muafiyet",
+    },
+    {
+        "key": "high_honour",
+        "title": "High-honour award",
+        "query": "high honour scholarship top 1 percent tuition fee monetary award",
+        "query_tr": "yuksek seref akademik basari burs odul ogrenim ucreti para odulu",
+    },
+    {
+        "key": "sports_grant",
+        "title": "Sports grant",
+        "query": "sports grant scholarship tuition accommodation EMU sports clubs national player",
+        "query_tr": "basarili sporcu bursu spor burs ogrenim ucreti yurt milli sporcu",
+    },
+    {
+        "key": "research_assistant",
+        "title": "Research assistant and postgraduate scholarships",
+        "query": "research assistant postgraduate scholarship category monthly minimum wage tuition exemption",
+        "query_tr": "arastirma gorevlisi gorev bursu lisansustu burs asgari ucret ogrenim ucreti muafiyet",
+    },
+    {
+        "key": "disability",
+        "title": "Student with disability scholarship",
+        "query": "student with disability scholarship tuition fee disabled students",
+        "query_tr": "engelli ogrenci bursu ogrenim ucreti engelli ogrenciler",
+    },
+]
 
 
 def decide_answerability(query: str, hits: List[Mapping[str, Any]]) -> EvidenceDecision:
@@ -41,10 +83,10 @@ def decide_answerability(query: str, hits: List[Mapping[str, Any]]) -> EvidenceD
     if _has_conflict(copied_hits):
         return EvidenceDecision("conflict", "show_conflict", "retrieved sources are marked as conflicting", copied_hits[:5])
 
-    query_terms = set(tokenize(query))
+    query_terms = set(signal_terms(query)) or set(tokenize(query))
     scored = []
     for hit in copied_hits:
-        text_terms = set(tokenize(str(hit.get("chunk_text", ""))))
+        text_terms = set(tokenize(_evidence_text(hit)))
         overlap = len(query_terms & text_terms)
         score = float(hit.get("score", 0.0))
         scored.append((overlap, score, hit))
@@ -75,14 +117,170 @@ def build_extractive_answer(query: str, hits: List[Mapping[str, Any]]) -> Answer
         text = f"The question is ambiguous. Please choose the relevant regulation or topic:\n{options}"
     elif decision.action == "show_conflict":
         text = _conflict_answer(decision.supported_hits)
+    elif _is_table_query(query) and _structured_hits(decision.supported_hits):
+        structured_hits = _structured_hits(decision.supported_hits)
+        text = _structured_table_answer(structured_hits)
+        citations = unique_citations(structured_hits)
+        return Answer(mode=decision.action, text=text, citations=citations, decision=decision, answer_type="table")
     else:
-        snippets = [_snippet(str(hit.get("chunk_text", ""))) for hit in decision.supported_hits[:3]]
+        snippets = [_focused_snippet(query, str(hit.get("chunk_text", ""))) for hit in decision.supported_hits[:3]]
         prefix = "Based on the cited regulation evidence"
         if decision.action == "answer_uncertain":
             prefix = "The indexed evidence is partial, but it suggests"
         text = prefix + ":\n\n" + "\n\n".join(f"- {snippet}" for snippet in snippets)
 
     return Answer(mode=decision.action, text=text, citations=citations, decision=decision)
+
+
+def is_scholarship_bundle_query(query: str) -> bool:
+    lowered = normalize_text(query)
+    terms = set(signal_terms(query)) or set(tokenize(query))
+    if not ({"scholarship", "scholarships", "burs"} & terms or "scholarship" in lowered or "burs" in lowered):
+        return False
+    if _scholarship_marker_group_count(lowered) >= 2:
+        return True
+    specific_markers = (
+        "first 5000",
+        "sports grant",
+        "high honour",
+        "research assistant",
+        "postgraduate",
+        "lisansustu",
+        "oran",
+        "rate",
+        "yuzde",
+        "percent",
+        "disabled",
+        "disability",
+        "international",
+    )
+    if any(marker in lowered for marker in specific_markers):
+        return False
+    broad_markers = (
+        "how to get",
+        "how can i get",
+        "ways",
+        "types",
+        "what scholarships",
+        "which scholarships",
+        "all scholarships",
+        "nasıl",
+        "nasil",
+        "hangi burs",
+        "burs al",
+    )
+    return any(marker in lowered for marker in broad_markers) or len(query.split()) <= 5
+
+
+def scholarship_group_query(group: Mapping[str, str], original_query: str) -> str:
+    if route_query(original_query).query_language == "tr":
+        return str(group.get("query_tr") or group["query"])
+    return str(group["query"])
+
+
+def _scholarship_marker_group_count(normalized_query: str) -> int:
+    groups = [
+        ("sport", "spor"),
+        ("research assistant", "arastirma gorevlisi", "gorev bursu"),
+        ("high honour", "high honor", "yuksek seref", "akademik basari"),
+        ("international", "uluslararasi"),
+        ("disability", "disabled", "engelli"),
+        ("entrance", "incentive", "giris", "tesvik"),
+    ]
+    return sum(1 for markers in groups if any(marker in normalized_query for marker in markers))
+
+
+def build_topic_bundle_answer(query: str, grouped_hits: Mapping[str, List[Mapping[str, Any]]]) -> Answer:
+    supported_hits: List[Dict[str, Any]] = []
+    groups: List[Dict[str, Any]] = []
+    lines = [
+        "The indexed regulations describe several scholarship or scholarship-like routes. "
+        "Here is a fast grouped overview from cited evidence:"
+    ]
+    for group in SCHOLARSHIP_EVIDENCE_GROUPS:
+        hits = [dict(hit) for hit in grouped_hits.get(group["key"], [])]
+        if not hits:
+            continue
+        supported_hits.extend(hits[:2])
+        snippet = _focused_snippet(
+            query + " " + scholarship_group_query(group, query),
+            str(hits[0].get("chunk_text", "")),
+            max_chars=360,
+        )
+        citations = [citation.as_dict() for citation in unique_citations(hits[:2], limit=2)]
+        groups.append(
+            {
+                "key": group["key"],
+                "title": group["title"],
+                "summary": snippet,
+                "citations": citations,
+            }
+        )
+        lines.append(f"- {group['title']}: {snippet}")
+    if not groups:
+        decision = EvidenceDecision("weak", "refuse", "no scholarship bundle evidence", [])
+        text = "I could not find reliable scholarship evidence in the indexed EMU regulations."
+        return Answer(mode="refuse", text=text, citations=[], decision=decision, answer_type="topic_bundle")
+    lines.append("Which scholarship type should I expand with eligibility, duration, and conditions?")
+    decision = EvidenceDecision("strong", "answer", "deterministic scholarship evidence bundle", supported_hits)
+    return Answer(
+        mode="answer",
+        text="\n\n".join(lines),
+        citations=unique_citations(supported_hits),
+        decision=decision,
+        answer_type="topic_bundle",
+        evidence_groups=groups,
+    )
+
+
+def _is_table_query(query: str) -> bool:
+    lowered = normalize_text(query)
+    terms = set(signal_terms(query)) or set(tokenize(query))
+    table_terms = {
+        "salary",
+        "salaries",
+        "range",
+        "ranges",
+        "scale",
+        "scales",
+        "step",
+        "steps",
+        "professor",
+        "assistant",
+        "maas",
+        "barem",
+        "basamak",
+    }
+    return bool(terms & table_terms) or any(marker in lowered for marker in ("salary range", "salary scale", "maas", "barem"))
+
+
+def _structured_hits(hits: List[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    structured = []
+    for hit in hits:
+        metadata = hit.get("metadata") if isinstance(hit.get("metadata"), Mapping) else {}
+        if metadata.get("evidence_kind") in {"derived_fact", "table_row", "table_summary"}:
+            structured.append(dict(hit))
+    structured.sort(key=lambda hit: _structured_priority(hit), reverse=True)
+    return structured
+
+
+def _structured_priority(hit: Mapping[str, Any]) -> tuple[int, float]:
+    metadata = hit.get("metadata") if isinstance(hit.get("metadata"), Mapping) else {}
+    kind = metadata.get("evidence_kind")
+    priority = {"derived_fact": 3, "table_row": 2, "table_summary": 1}.get(str(kind), 0)
+    return priority, float(hit.get("score", 0.0))
+
+
+def _structured_table_answer(hits: List[Mapping[str, Any]]) -> str:
+    lines = ["Based on structured table evidence:"]
+    seen = set()
+    for hit in hits[:4]:
+        text = str(hit.get("chunk_text", ""))
+        if text in seen:
+            continue
+        seen.add(text)
+        lines.append(f"- {_snippet(text, max_chars=700)}")
+    return "\n\n".join(lines)
 
 
 def progressive_answer_events(
@@ -97,8 +295,10 @@ def progressive_answer_events(
     yield {
         "type": "extractive_answer",
         "mode": extractive.mode,
+        "answer_type": extractive.answer_type,
         "text": extractive.text,
         "citations": [citation.as_dict() for citation in extractive.citations],
+        "evidence_groups": extractive.evidence_groups,
     }
 
     if generator is None or extractive.decision.action in {"refuse", "clarify", "show_conflict"}:
@@ -174,6 +374,40 @@ def _snippet(text: str, *, max_chars: int = 420) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 3].rstrip() + "..."
+
+
+def _evidence_text(hit: Mapping[str, Any]) -> str:
+    return " ".join(
+        str(hit.get(field, ""))
+        for field in ("chunk_text", "source_title", "section_path", "article_number", "source_url")
+    )
+
+
+def _focused_snippet(query: str, text: str, *, max_chars: int = 420) -> str:
+    query_terms = set(signal_terms(query)) or {term for term in tokenize(query) if len(term) > 2}
+    sentences = _sentences(text)
+    if not sentences:
+        return _snippet(text, max_chars=max_chars)
+    scored = []
+    for idx, sentence in enumerate(sentences):
+        sentence_terms = set(tokenize(sentence))
+        overlap = len(query_terms & sentence_terms)
+        scored.append((overlap, -idx, sentence))
+    scored.sort(reverse=True)
+    best = [sentence for overlap, _idx, sentence in scored if overlap > 0][:2]
+    if not best:
+        best = [sentences[0]]
+    return _snippet(" ".join(best), max_chars=max_chars)
+
+
+def _sentences(text: str) -> List[str]:
+    import re
+
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return []
+    pieces = re.split(r"(?<=[.!?])\s+(?=[A-ZÇĞİÖŞÜ0-9(])", cleaned)
+    return [piece.strip() for piece in pieces if piece.strip()]
 
 
 def _conflict_answer(hits: List[Mapping[str, Any]]) -> str:

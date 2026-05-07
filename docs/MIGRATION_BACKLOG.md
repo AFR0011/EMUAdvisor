@@ -1,6 +1,6 @@
 # Migration Backlog
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 This backlog translates the current spec and old-demo evidence into implementation work. It is not validation that the work is complete.
 
@@ -15,12 +15,12 @@ This backlog translates the current spec and old-demo evidence into implementati
 
 - Initial canonical document/chunk schema validation exists in `emu_advisor/schema.py`; integrate it across ingestion, indexing, retrieval, citation, and audit.
 - Local root code now uses a deterministic multilingual hashing baseline instead of `intfloat/e5-base-v2`; replace it with a real local multilingual model before quality claims.
-- Language/corpus routing exists in `emu_advisor/routing.py`; validate against real corpus artifacts.
-- `eval_sets/v1_seed.jsonl` has 30 machine-readable seed cases; expand to the reviewed 50-60 question bilingual gold set with expected supporting evidence.
+- Language/corpus routing exists in `emu_advisor/routing.py` and is validated against the current real corpus artifact.
+- `eval_sets/v1_gold.jsonl` has 60 assistant-curated bilingual candidate cases with expected supporting evidence; human review remains required before gold-set claims.
 
 ## P1 - Storage And Indexing
 
-- Offline Qdrant-compatible store exists in `emu_advisor/store.py`; add real Qdrant adapter while preserving hybrid lexical plus dense retrieval behavior.
+- Real Qdrant adapter and index build CLI exist; embedded local Qdrant is validated. Validate next against a Docker/live Qdrant service while preserving local fallback for development/tests.
 - Add payload metadata indexes for language, corpus, access tier, source type, source URL/path, version hash, crawl timestamp, section, article, and page.
 - Keep prior crawl/index snapshots for audit, reproducibility, and rollback.
 
@@ -32,7 +32,7 @@ This backlog translates the current spec and old-demo evidence into implementati
 
 ## P1 - Answer Behavior
 
-- Implement or harden the answerability gate for strong, medium, weak, and conflict cases.
+- Answerability gate exists for strong, medium, weak, and conflict cases; continue hardening after human review of the candidate set.
 - Ensure unsupported or ambiguous questions trigger clarification, uncertainty, refusal, or office redirection.
 - Add conflict display when sources disagree; do not resolve conflicts without a formal precedence rule.
 - Add extractive fallback behavior under slow or queued generation.
@@ -40,7 +40,7 @@ This backlog translates the current spec and old-demo evidence into implementati
 ## P2 - Runtime And Operations
 
 - Define cheap, balanced, and expensive modes across retrieval fanout, embedding, reranking, context, and local LLM choices.
-- Normalize latency measurements into extractive answer time, first generated token time, and full generated answer time.
+- Normalize latency measurements into extractive answer time, first generated token time, and full generated answer time. Non-streaming generated latency is measured; first-token latency still needs streaming metrics.
 - Confirm campus/server OS, CPU, RAM, GPU, CUDA, Docker, storage, and local-service permissions with IT.
 - Add anonymized query logging for debugging, evaluation improvement, and usage analytics.
 - Build CLI admin refresh and approval workflow before production-like deployment.

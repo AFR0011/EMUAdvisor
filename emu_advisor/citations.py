@@ -19,6 +19,8 @@ class Citation:
     page_number: int | None
     version_hash: str
     last_crawled_at: str
+    supporting_chunk_ids: List[str] | None = None
+    supporting_source_urls: List[str] | None = None
 
     def label(self) -> str:
         pieces = [self.source_title]
@@ -44,11 +46,14 @@ class Citation:
             "page_number": self.page_number,
             "version_hash": self.version_hash,
             "last_crawled_at": self.last_crawled_at,
+            "supporting_chunk_ids": self.supporting_chunk_ids or [],
+            "supporting_source_urls": self.supporting_source_urls or [],
             "label": self.label(),
         }
 
 
 def citation_from_chunk(chunk: Mapping[str, Any]) -> Citation:
+    metadata = chunk.get("metadata") if isinstance(chunk.get("metadata"), Mapping) else {}
     return Citation(
         chunk_id=str(chunk["chunk_id"]),
         document_id=str(chunk["document_id"]),
@@ -61,6 +66,8 @@ def citation_from_chunk(chunk: Mapping[str, Any]) -> Citation:
         page_number=chunk.get("page_number"),
         version_hash=str(chunk["version_hash"]),
         last_crawled_at=str(chunk["last_crawled_at"]),
+        supporting_chunk_ids=[str(item) for item in metadata.get("source_chunk_ids", [])] if isinstance(metadata.get("source_chunk_ids"), list) else [],
+        supporting_source_urls=[str(item) for item in metadata.get("supporting_source_urls", [])] if isinstance(metadata.get("supporting_source_urls"), list) else [],
     )
 
 

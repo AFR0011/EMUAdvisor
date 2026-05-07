@@ -6,49 +6,43 @@
     <title>EMU Regulation Assistant</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
-  <body>
-    <main class="shell">
-      <section class="hero">
-        <p class="eyebrow">Local-only V1 demo</p>
-        <h1>EMU Regulation Assistant</h1>
-        <p class="lede">
-          Ask staff-facing questions about indexed EMU regulations. Answers stay grounded in cited
-          evidence and will refuse or clarify when support is weak.
-        </p>
-      </section>
-
-      <section class="panel" aria-label="Ask a regulation question">
-        <label for="question">Question</label>
-        <textarea id="question" rows="4">What is the attendance requirement?</textarea>
-        <div class="controls">
-          <select id="mode" aria-label="Operating mode">
-            <option value="cheap">Cheap</option>
-            <option value="balanced" selected>Balanced</option>
-            <option value="expensive">Expensive</option>
-          </select>
-          <select id="answer-style" aria-label="Answer style">
-            <option value="both" selected>Extractive + LLM</option>
-            <option value="extractive">Extractive only</option>
-            <option value="generated">LLM answer</option>
-          </select>
-          <label class="check"><input id="cross" type="checkbox" /> Cross-corpus</label>
-          <button id="ask">Ask</button>
+  <body class="public-view">
+    <main class="chat-shell">
+      <header class="chat-header">
+        <div>
+          <p class="eyebrow">Local-only demo</p>
+          <h1>EMU Regulation Assistant</h1>
         </div>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="chat-card" aria-label="Regulation chat">
+        <div id="messages" class="messages" aria-live="polite">
+          <article class="message assistant">
+            <p>
+              Ask a staff-facing question about indexed EMU regulations. I will answer from cited
+              regulation evidence, or ask you to clarify when the support is not strong enough.
+            </p>
+          </article>
+        </div>
+
+        <form id="chat-form" class="composer">
+          <label class="sr-only" for="question">Question</label>
+          <textarea
+            id="question"
+            rows="3"
+            placeholder="Ask about an EMU regulation..."
+          >What is the attendance requirement?</textarea>
+          <div class="composer-actions">
+            <label class="check"><input id="cross" type="checkbox" /> Compare English and Turkish sources</label>
+            <button id="ask" type="submit">Send</button>
+          </div>
+        </form>
       </section>
 
-      <section class="metrics" aria-label="Demo metrics">
-        <article><span id="corpus-count">-</span><small>chunks</small></article>
-        <article><span id="top5">-</span><small>top-5 retrieval</small></article>
-        <article><span id="reject">-</span><small>rejection accuracy</small></article>
-        <article><span id="latency">-</span><small>p50 extractive latency</small></article>
-      </section>
-
-      <section class="result" aria-live="polite">
-        <div id="status">Ready.</div>
-        <pre id="answer"></pre>
-        <pre id="generated"></pre>
-        <div id="citations"></div>
-      </section>
+      <p class="disclaimer">
+        This demo is informational only and does not provide a final official university decision.
+      </p>
     </main>
     <script src="/static/app.js"></script>
   </body>

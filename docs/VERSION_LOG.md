@@ -54,6 +54,44 @@ Use this log for meaningful project milestones only.
 - Recorded bounded `qwen3:8b` generation as unavailable in this environment because all attempted generated calls timed out.
 - Verified with 38 unit/API tests, canonical JSONL validation, evaluation validation, metrics run, API smoke, syntax scan, and FastAPI import smoke.
 
+## 2026-05-04 - Evaluation-First Hardening Candidate Pass
+
+- Expanded `eval_sets/v1_gold.jsonl` to 60 assistant-curated EN/TR cases with source URLs, chunk IDs, behavior mix, and `assistant_curated_pending_human_review` labels.
+- Added stricter evaluation validation for case count, EN/TR balance, answerable source labels, cross-source labels, and mojibake detection.
+- Added metrics failure analysis, category metrics, worst failed cases, generated-mode status/unavailable reason, and bounded Ollama smoke gating.
+- Added root `README.md` and `docs/DEMO_METRICS_SNAPSHOT.md` for GitHub/demo packaging.
+- Added `/llm/status`, UI local-LLM status badge, generated-answer smoke fallback, Qdrant backend envs, and `python -m emu_advisor.index build`.
+- Hardened retrieval and extractive answer ordering by demoting TOC/form chunks and using source metadata plus signal terms for scoring.
+- Produced 60-case candidate metrics: top-5 retrieval 92.31%, response accuracy 92.31%, rejection accuracy 100%, clarification accuracy 100%, citation coverage 100%, extractive p50 129 ms.
+- Recorded `qwen3:8b` generated mode as unavailable because bounded smoke generation timed out despite the model being detected.
+- Verified with 45 unit/API tests, evaluation validation, metrics runs, and generated-mode smoke-gated metrics.
+
+## 2026-05-05 - Priority Fix Pass
+
+- Validated the Qdrant backend with an embedded local Qdrant index at `artifacts/qdrant/latest` containing 2,496 chunks in collection `emu_regulations`.
+- Fixed Qdrant adapter compatibility for current `qdrant-client` APIs while preserving fake-client unit tests and local fallback behavior.
+- Fixed local Ollama `qwen3:8b` generation by disabling qwen thinking mode, reducing bounded generation settings, raising probe timeouts, and clearing a stuck resident Ollama runner.
+- Changed `/ask` generated mode to perform a fast model-availability check and rely on extractive fallback if the generation call fails.
+- Hardened retrieval scoring/routing for Turkish grade queries, academic staff salary/scale queries, scholarship queries, and index/form chunk demotion.
+- Produced updated 60-case candidate metrics: top-5 retrieval 100%, response accuracy 100%, rejection accuracy 100%, clarification accuracy 100%, citation coverage 100%, extractive p50 87 ms.
+- Produced generated metrics with `qwen3:8b`: 48 / 48 generated attempts completed, generated p50 14,254 ms, generated p95 16,057 ms.
+- Verified with 45 unit/API tests, canonical JSONL validation, evaluation validation, metrics runs, Qdrant index build, and FastAPI import smoke.
+
+## 2026-05-05 - Structured Evidence Hardening
+
+- Rebuilt HTML ingestion around table-aware evidence: table summaries, row-level chunks, table metadata, and derived academic salary facts.
+- Added derived academic salary comparisons that link title-to-scale rows with salary-scale rows for professor, associate professor, and assistant professor queries.
+- Added `eval_sets/v1_hard.jsonl` with 50 assistant-curated salary-table, scholarship-bundle, and refusal regression cases.
+- Added deterministic scholarship topic bundles for broad prompts such as `How to get a scholarship?`, using grouped extractive evidence instead of large raw LLM prompts.
+- Added localized Turkish scholarship bundle subqueries and preserved out-of-scope refusals before the bundle planner runs.
+- Hardened retrieval normalization, Turkish routing, source-specific boosts for withdrawal/scholarship/research-assistant rules, placeholder form-row demotion, and cross-corpus result diversification.
+- Rebuilt the live ignored corpus artifact: 123 pages, 22 PDFs, 8,714 chunks, 119 sources/documents.
+- Rebuilt embedded Qdrant at `artifacts/qdrant/latest`: 8,714 chunks, 256 dimensions, collection `emu_regulations`.
+- Produced updated 60-case candidate metrics: top-5 retrieval 100%, response accuracy 100%, rejection accuracy 100%, clarification accuracy 100%, citation coverage 100%, extractive p50 674 ms.
+- Produced hard-regression metrics: top-5 retrieval 100%, response accuracy 100%, rejection accuracy 100%, citation coverage 100%, extractive p50 468 ms.
+- Recorded generated metrics with `qwen3:8b` as unavailable under the 2-second smoke limit despite model detection; extractive fallback remains verified.
+- Verified with 49 unit/API tests, JSONL validation, evaluation validation, gold and hard metrics runs, Qdrant index build, API smoke, and FastAPI import smoke.
+
 ## Historical Old-Demo Git State
 
 - `cee36fc Add files via upload`

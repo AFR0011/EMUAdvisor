@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-04
+Last updated: 2026-05-05
 
 ## Workspace Shape
 
@@ -11,7 +11,10 @@ EMUAdvisor/
   requirements-dev.txt
   AGENTS.md
   docs/
+    DEMO_METRICS_SNAPSHOT.md
+    eval_spec.md
     PROJECT_STATE.md
+    PROJECT_STATUS_PROGRESS_PLAN.md
     REPO_MAP.md
     RUN_PROTOCOL.md
     SCHEMA.md
@@ -43,11 +46,16 @@ EMUAdvisor/
     schema.py
     store.py
     text.py
+    index.py
     validate_jsonl.py
   eval_sets/
+    emu_gold_seed.jsonl
     v1_gold.jsonl
+    v1_hard.jsonl
   artifacts/              # ignored generated crawl, corpus, metrics, and review outputs
   static/
+    admin.html
+    admin.js
     index.html
     style.css
     app.js
@@ -98,18 +106,23 @@ EMUAdvisor/
 - `docs/SCHEMA.md`: canonical document/chunk schema contract and validation usage.
 - `docs/SPRINT_PLAN.md`: 24-48 hour implementation and testing sequence.
 - `docs/SPRINT_STATUS.md`: sprint implementation status and validation boundary.
+- `docs/PROJECT_STATUS_PROGRESS_PLAN.md`: current status, achieved progress, validated metrics, limitations, and forward plan.
 - `docs/RELEASE_CANDIDATE.md`: live demo release notes, measured metrics, and remaining production gaps.
+- `docs/DEMO_METRICS_SNAPSHOT.md`: concise tracked snapshot of current demo corpus, metrics, sample outputs, and limits.
+- `docs/eval_spec.md`: scoring rubric, case status rules, and mode-comparison instructions.
 - `emu_advisor/schema.py`: dependency-free canonical schema validation and legacy chunk mapping.
 - `emu_advisor/validate_jsonl.py`: JSONL validator CLI for canonical records.
-- `emu_advisor/html_ingest.py` and `pdf_ingest.py`: canonical source ingestion.
+- `emu_advisor/html_ingest.py` and `pdf_ingest.py`: canonical source ingestion, including table summaries, row-level chunks, and derived salary facts for HTML.
 - `emu_advisor/pipeline.py`: polite official-host crawl/build CLI for canonical demo artifacts.
 - `emu_advisor/corpus.py`: active corpus artifact loader, fixture fallback, and corpus status reporting.
-- `emu_advisor/metrics.py`: evaluation runner that emits JSON/Markdown/CSV metrics and human-review CSV.
+- `emu_advisor/metrics.py`: evaluation runner that emits JSON/Markdown/CSV metrics, human-review CSV, failure analysis, and cheap/balanced/expensive comparison reports.
 - `emu_advisor/generation.py`: local Ollama generated-answer adapter with extractive fallback.
-- `emu_advisor/retrieval.py`, `store.py`, `embeddings.py`, and `modes.py`: local retrieval stack.
-- `emu_advisor/answer.py` and `citations.py`: answerability, fallback, conflict, and citations.
-- `emu_advisor/server.py` and `static/`: FastAPI demo and UI.
-- `eval_sets/v1_gold.jsonl`: current 30-case bilingual seed gold set.
+- `emu_advisor/retrieval.py`, `store.py`, `embeddings.py`, `modes.py`, and `index.py`: local/Qdrant retrieval stack and index build CLI.
+- `emu_advisor/answer.py` and `citations.py`: answerability, table answers, scholarship topic bundles, fallback, conflict, and citations.
+- `emu_advisor/server.py` and `static/`: FastAPI demo and UI; `/` is the simple chatbot, `/admin` is the diagnostic console, `/chat` is sanitized, and `/ask` remains the full diagnostic endpoint.
+- `eval_sets/emu_gold_seed.jsonl`: 50-case provisional seed converted from `docs/gold-set-comprehensive-analysis.md`, pending exact source/chunk binding and human review.
+- `eval_sets/v1_gold.jsonl`: current 60-case assistant-curated bilingual candidate set pending human review.
+- `eval_sets/v1_hard.jsonl`: 50-case assistant-curated hard regression set for table-derived salary and broad scholarship failures.
 - `artifacts/`: ignored generated crawl metadata, canonical chunks, snapshots, metrics reports, and review CSVs.
 - `tests/`: unit tests and schema fixtures.
 - `.old/*.py`: old-demo ingestion, processing, indexing, retrieval, reranking, and evaluation scripts.
@@ -128,6 +141,7 @@ Official EMU regulation HTML/PDF sources
   -> emu_advisor.retrieval
   -> emu_advisor.answer and optional emu_advisor.generation
   -> emu_advisor.server and static UI
+  -> /chat for simple demo or /ask for admin diagnostics
   -> emu_advisor.metrics
   -> artifacts/metrics/latest/{metrics.json,metrics.md,per_case.csv,human_review.csv}
 ```
@@ -168,14 +182,17 @@ Official EMU regulation HTML/PDF sources
 - Root test runner: `python -m unittest discover -s tests`.
 - Root corpus build: `python -m emu_advisor.pipeline build --seed https://mevzuat.emu.edu.tr/content.htm --seed https://mevzuat.emu.edu.tr/Content-en.htm --out artifacts\demo_corpus\latest --max-pages 1000 --include-pdfs`.
 - Root metrics run: `python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\latest`.
+- Root hard metrics run: `python -m emu_advisor.metrics run --cases eval_sets\v1_hard.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\hard_latest`.
+- Root Qdrant index build: `python -m emu_advisor.index build --chunks artifacts\demo_corpus\latest\chunks.jsonl --backend qdrant --collection emu_regulations --qdrant-path artifacts\qdrant\latest` for embedded local Qdrant, or omit `--qdrant-path` for a live Qdrant service.
 - Backend framework: FastAPI with Uvicorn.
 - Frontend: static HTML, CSS, and JavaScript.
 - Crawl storage: ignored raw files plus canonical JSONL artifacts.
 - Intermediate data: JSONL and JSON reports.
 - Existing retrieval stack: BM25 plus dense embeddings with FAISS when available, numpy fallback otherwise.
-- Active root retrieval stack: local lexical+dense hybrid retrieval with hash fallback and optional Ollama embeddings.
+- Active root retrieval stack: local/Qdrant lexical+dense hybrid retrieval with hash fallback and optional Ollama embeddings.
 - Existing old-demo model tooling: `sentence-transformers`, `transformers`, optional local Ollama.
 - Root runtime dependencies: FastAPI, Uvicorn, Pydantic, HTTPX, and pypdf.
+- Optional production vector backend dependency: `qdrant-client`.
 - Full old-demo dependencies: FastAPI, Uvicorn, Pydantic, Requests, HTTPX, BeautifulSoup, charset-normalizer, numpy, faiss-cpu, sentence-transformers, transformers.
 - `torch` is intentionally not pinned because CUDA wheels are platform-specific.
 
@@ -193,7 +210,7 @@ Official EMU regulation HTML/PDF sources
 - `.old/` is ignored by the root repo and should not be treated as active implementation code.
 - Old-demo config and scripts default to `intfloat/e5-base-v2`, which conflicts with the bilingual V1 requirement.
 - Old-demo config points EN and TR indexes to the same path.
-- The spec calls for Qdrant-backed hybrid retrieval, but old-demo code still uses BM25 plus FAISS/numpy.
+- The active root implementation supports local and Qdrant-backed hybrid retrieval; old-demo code still uses BM25 plus FAISS/numpy.
 - The spec requires stronger PDF metadata handling than the visible old-demo docs prove.
 - The `.old/` archive contains Python cache files that should remain ignored.
 - There is no single standard test command.
@@ -203,8 +220,11 @@ Official EMU regulation HTML/PDF sources
 - Full legacy pipeline reference: run numbered scripts in `.old/` in sequence.
 - Root corpus build: `python -m emu_advisor.pipeline build ...`.
 - Root metrics: `python -m emu_advisor.metrics run ...`.
+- Root mode comparison: `python -m emu_advisor.metrics run --all-modes --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\mode_comparison`.
+- Root Qdrant/local index build: `python -m emu_advisor.index build ...`.
 - Retrieval smoke: `6.TestRetrieve.py`, `7.RetrieveHybrid.py`, or `8.RerankMultilingualV7_3.py` with a built index.
 - Legacy evaluation: `EvaluateRetrieval.py` with a built index and query set.
 - Backend: `python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000` from the root repo.
 - Legacy backend: `python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000` from `.old/`.
-- UI: `http://127.0.0.1:8000` after backend startup.
+- Simple UI: `http://127.0.0.1:8000` after backend startup.
+- Admin UI: `http://127.0.0.1:8000/admin` after backend startup.

@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional
 from urllib.parse import urlparse
 
+from .text import normalize_text
 
-TURKISH_MARKERS = set("çğıöşüÇĞİÖŞÜ")
+
+TURKISH_MARKERS = set("\u00e7\u011f\u0131\u00f6\u015f\u00fc\u00c7\u011e\u0130\u00d6\u015e\u00dc")
 OUT_OF_SCOPE_TERMS = (
     "event",
     "events",
@@ -22,7 +24,7 @@ OUT_OF_SCOPE_TERMS = (
     "etkinlikler",
     "e-posta",
     "eposta",
-    "bölüm program",
+    "bolum program",
 )
 
 
@@ -38,14 +40,32 @@ class RouteDecision:
 def detect_query_language(query: str) -> str:
     if any(char in TURKISH_MARKERS for char in query):
         return "tr"
-    lowered = query.lower()
-    if any(token in lowered for token in (" nedir", " yonetmelik", "yönetmelik", " madde", " öğrenci", "ogrenci", "öğretim", "ogretim")):
+    lowered = normalize_text(query)
+    if any(
+        token in lowered
+        for token in (
+            " nedir",
+            " yonetmelik",
+            " madde",
+            " ogrenci",
+            "ogrenci",
+            "ogretim",
+            " anlama gelir",
+            " notu",
+            " burs",
+            " harc",
+            "harc",
+            " maas",
+            "maas",
+            " barem",
+        )
+    ):
         return "tr"
     return "en"
 
 
 def route_query(query: str, *, explicit_cross_corpus: bool = False) -> RouteDecision:
-    lowered = query.lower()
+    lowered = normalize_text(query)
     if any(term in lowered for term in OUT_OF_SCOPE_TERMS):
         return RouteDecision(
             query_language=detect_query_language(query),
@@ -57,9 +77,10 @@ def route_query(query: str, *, explicit_cross_corpus: bool = False) -> RouteDeci
 
     language = detect_query_language(query)
     if explicit_cross_corpus or asks_cross_corpus(query):
+        corpora = ["regulations_tr", "regulations_en"] if language == "tr" else ["regulations_en", "regulations_tr"]
         return RouteDecision(
             query_language=language,
-            corpora=["regulations_en", "regulations_tr"],
+            corpora=corpora,
             cross_corpus=True,
             in_scope=True,
             reason="explicit cross-corpus search requested",
@@ -76,7 +97,7 @@ def route_query(query: str, *, explicit_cross_corpus: bool = False) -> RouteDeci
 
 
 def asks_cross_corpus(query: str) -> bool:
-    lowered = query.lower()
+    lowered = normalize_text(query)
     return any(
         marker in lowered
         for marker in (
@@ -84,9 +105,9 @@ def asks_cross_corpus(query: str) -> bool:
             "both english and turkish",
             "english and turkish",
             "turkish and english",
-            "karşılaştır",
-            "ingilizce ve türkçe",
-            "türkçe ve ingilizce",
+            "karsilastir",
+            "ingilizce ve turkce",
+            "turkce ve ingilizce",
         )
     )
 
