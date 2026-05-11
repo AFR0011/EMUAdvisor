@@ -7,7 +7,8 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from statistics import median
+from typing import Any, Dict, Iterable, Optional
 
 
 @dataclass(frozen=True)
@@ -55,3 +56,57 @@ class AuditLogger:
         if rotated.exists():
             rotated.unlink()
         self.path.rename(rotated)
+
+
+def summarize_audit_log(path: Path) -> Dict[str, Any]:
+    events = list(_read_events(path))
+    latencies = [int(event.get("latency_ms", 0)) for event in events if isinstance(event.get("latency_ms"), int)]
+    answer_modes: Dict[str, int] = {}
+    event_types: Dict[str, int] = {}
+    language_counts: Dict[str, int] = {}
+    refusal_count = 0
+    for event in events:
+        answer_mode = str(event.get("answer_mode") or "unknown")
+        event_type = str(event.get("event_type") or "unknown")
+        route = event.get("route") if isinstance(event.get("route"), dict) else {}
+        language = str(route.get("query_language") or "unknown")
+        answer_modes[answer_mode] = answer_modes.get(answer_mode, 0) + 1
+        event_types[event_type] = event_types.get(event_type, 0) + 1
+        language_counts[language] = language_counts.get(language, 0) + 1
+        if route.get("in_scope") is False:
+            refusal_count += 1
+    return {
+        "available": path.exists(),
+        "path": str(path),
+        "events": len(events),
+        "event_types": event_types,
+        "answer_modes": answer_modes,
+        "languages": language_counts,
+        "out_of_scope_or_refusal_routes": refusal_count,
+        "latency_p50_ms": _percentile(latencies, 0.50),
+        "latency_p95_ms": _percentile(latencies, 0.95),
+    }
+
+
+def _read_events(path: Path) -> Iterable[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    events = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            events.append({"event_type": "parse_error", "latency_ms": 0})
+    return events
+
+
+def _percentile(values: list[int], ratio: float) -> Optional[int]:
+    if not values:
+        return None
+    ordered = sorted(values)
+    if ratio == 0.50:
+        return int(median(ordered))
+    index = min(len(ordered) - 1, max(0, int(round((len(ordered) - 1) * ratio))))
+    return int(ordered[index])

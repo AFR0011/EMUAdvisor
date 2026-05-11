@@ -14,8 +14,16 @@ const top5 = document.querySelector("#top5");
 const reject = document.querySelector("#reject");
 const latency = document.querySelector("#latency");
 const llmStatus = document.querySelector("#llm-status");
+const auditCount = document.querySelector("#audit-count");
 const corpusDetails = document.querySelector("#corpus-details");
 const modeDetails = document.querySelector("#mode-details");
+const analyticsDetails = document.querySelector("#analytics-details");
+
+const queryToken = new URLSearchParams(window.location.search).get("admin_token");
+if (queryToken) {
+  window.sessionStorage.setItem("emu_admin_token", queryToken);
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
 
 loadMetrics();
 
@@ -29,7 +37,7 @@ askButton.addEventListener("click", async () => {
   askButton.disabled = true;
 
   try {
-    const response = await fetch("/ask", {
+    const response = await authedFetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -41,7 +49,8 @@ askButton.addEventListener("click", async () => {
       }),
     });
     if (!response.ok) {
-      throw new Error(`Request failed: ${response.status}`);
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(readableError(errorPayload, response.status));
     }
     const payload = await response.json();
     statusEl.textContent = `${payload.mode} / ${payload.answer_type || "direct"} - ${payload.route.query_language.toUpperCase()} - ${payload.latency_ms}ms`;
@@ -83,18 +92,21 @@ askButton.addEventListener("click", async () => {
 async function loadMetrics() {
   llmStatus.textContent = "checking";
   try {
-    const [corpusResponse, metricsResponse, modesResponse] = await Promise.all([
-      fetch("/corpus/status"),
-      fetch("/metrics"),
-      fetch("/metrics/modes"),
+    const [corpusResponse, metricsResponse, modesResponse, analyticsResponse] = await Promise.all([
+      authedFetch("/corpus/status"),
+      authedFetch("/metrics"),
+      authedFetch("/metrics/modes"),
+      authedFetch("/analytics"),
     ]);
     const corpus = await corpusResponse.json();
     const metrics = await metricsResponse.json();
     const modes = await modesResponse.json();
+    const analytics = await analyticsResponse.json();
     corpusCount.textContent = corpus.chunk_count ?? "-";
     top5.textContent = formatPercent(metrics.retrieval_top5);
     reject.textContent = formatPercent(metrics.rejection_accuracy);
     latency.textContent = metrics.extractive_latency_p50_ms == null ? "-" : `${metrics.extractive_latency_p50_ms}ms`;
+    auditCount.textContent = analytics.events ?? "-";
     corpusDetails.innerHTML = renderDetails({
       source: corpus.source,
       runtime_profile: corpus.runtime_profile,
@@ -105,13 +117,23 @@ async function loadMetrics() {
       languages: JSON.stringify(corpus.languages || {}),
       source_types: JSON.stringify(corpus.source_types || {}),
     });
+    analyticsDetails.innerHTML = renderDetails({
+      events: analytics.events,
+      event_types: JSON.stringify(analytics.event_types || {}),
+      answer_modes: JSON.stringify(analytics.answer_modes || {}),
+      languages: JSON.stringify(analytics.languages || {}),
+      out_of_scope_routes: analytics.out_of_scope_or_refusal_routes,
+      latency_p50_ms: analytics.latency_p50_ms,
+      latency_p95_ms: analytics.latency_p95_ms,
+    });
     modeDetails.innerHTML = renderModes(modes);
   } catch {
     corpusCount.textContent = "-";
+    auditCount.textContent = "-";
   }
 
   try {
-    const llmResponse = await fetch("/llm/status");
+    const llmResponse = await authedFetch("/llm/status");
     const llm = await llmResponse.json();
     llmStatus.textContent = llm.model_available ? "available" : "fallback";
     llmStatus.classList.toggle("warn", !llm.model_available);
@@ -119,6 +141,15 @@ async function loadMetrics() {
     llmStatus.textContent = "fallback";
     llmStatus.classList.add("warn");
   }
+}
+
+function authedFetch(url, options = {}) {
+  const token = window.sessionStorage.getItem("emu_admin_token");
+  const headers = new Headers(options.headers || {});
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return fetch(url, { ...options, headers });
 }
 
 function renderEvidenceGroups(groups) {
@@ -167,6 +198,17 @@ function renderModes(payload) {
 
 function formatPercent(value) {
   return value == null ? "-" : `${Math.round(value * 100)}%`;
+}
+
+function readableError(payload, status) {
+  const details = Array.isArray(payload.detail) ? payload.detail : [];
+  if (details.length && details[0].msg) {
+    return details[0].msg;
+  }
+  if (payload.detail) {
+    return String(payload.detail);
+  }
+  return `Request failed: ${status}`;
 }
 
 function escapeHtml(value) {

@@ -20,3 +20,4 @@ old/
 *.jsonl.tmp
 logs/
 artifacts/
+.codex-observer/

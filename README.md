@@ -20,6 +20,7 @@ This is not a production system and does not provide official legal or administr
 - Generated mode: local Ollama `qwen3:8b` is implemented and fallback-safe, but the bounded 2-second smoke metric run timed out on this machine.
 
 See `docs/DEMO_METRICS_SNAPSHOT.md` for the tracked metrics summary and sample outputs.
+See `docs/BOARD_DEMO_READINESS.md` for the current board-demo readiness gate.
 
 ## Setup
 
@@ -60,6 +61,21 @@ python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artif
 
 Metrics outputs are written under ignored `artifacts/metrics/` directories as `metrics.json`, `metrics.md`, `per_case.csv`, and `human_review.csv`. All-mode runs also write `comparison.json` and `comparison.md`.
 
+Human-review helpers:
+
+```powershell
+python -m emu_advisor.eval_review status eval_sets\v1_gold.jsonl eval_sets\v1_hard.jsonl eval_sets\emu_gold_seed.jsonl
+python -m emu_advisor.eval_review export-csv --cases eval_sets\v1_gold.jsonl --out artifacts\review\v1_gold_review.csv
+python -m emu_advisor.eval_review bind-seed --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\review\emu_gold_seed.bound.jsonl
+```
+
+Local benchmark probes:
+
+```powershell
+python -m emu_advisor.benchmark embedding --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --embedding hash
+python -m emu_advisor.benchmark generation --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --model qwen3:8b --timeout-s 30 --limit 5
+```
+
 ## Run The Demo UI
 
 ```powershell
@@ -70,12 +86,15 @@ Open `http://127.0.0.1:8000` for the simple deployed-style chatbot.
 
 Open `http://127.0.0.1:8000/admin` for the local diagnostics/admin console.
 
+If `EMU_ADVISOR_ADMIN_TOKEN` is set, debug/admin endpoints require `Authorization: Bearer <token>` or `X-EMU-Admin-Token: <token>`. The browser admin console can be opened once with `http://127.0.0.1:8000/admin?admin_token=<token>`; the token is kept in browser session storage for same-session admin calls.
+
 API endpoints:
 
 - `GET /health`
 - `GET /whoami`
 - `GET /metrics`
 - `GET /metrics/modes`
+- `GET /analytics`
 - `GET /corpus/status`
 - `GET /llm/status`
 - `POST /chat`
@@ -107,10 +126,17 @@ For production profile:
 
 ```powershell
 $env:EMU_ADVISOR_PROFILE="production"
+$env:EMU_ADVISOR_ADMIN_TOKEN="<local-admin-token>"
 python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
 ```
 
 If Qdrant is unavailable in production profile, startup fails. In development/test profile, Qdrant falls back to the local store and `/corpus/status` reports the warning.
+
+Check index connectivity:
+
+```powershell
+python -m emu_advisor.index health --backend qdrant --collection emu_regulations --qdrant-url http://localhost:6333
+```
 
 ## Verification
 
@@ -120,6 +146,8 @@ python -m emu_advisor.validate_jsonl artifacts\demo_corpus\latest\chunks.jsonl -
 python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
 python -m emu_advisor.evaluation eval_sets\v1_hard.jsonl
 python -c "from emu_advisor.server import app; print(app.title)"
+python tools\browser_smoke.py --start-server --skip-if-unavailable
+python -m emu_advisor.readiness --out docs\BOARD_DEMO_READINESS.md
 ```
 
 ## Known Limits

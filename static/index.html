@@ -10,23 +10,35 @@
     <main class="chat-shell">
       <header class="chat-header">
         <div>
-          <p class="eyebrow">Local-only demo</p>
+          <p class="eyebrow">Official regulation evidence</p>
           <h1>EMU Regulation Assistant</h1>
+          <p class="header-copy">Staff-facing answers from indexed EMU regulation sources.</p>
         </div>
         <a class="admin-link" href="/admin">Admin</a>
       </header>
 
       <section class="chat-card" aria-label="Regulation chat">
+        <div class="scope-strip" aria-label="Demo scope">
+          <span>English and Turkish corpora stay separate by default</span>
+          <span>Official mevzuat sources only</span>
+          <span>Informational, not a final decision</span>
+        </div>
         <div id="messages" class="messages" aria-live="polite">
           <article class="message assistant">
             <p>
-              Ask a staff-facing question about indexed EMU regulations. I will answer from cited
-              regulation evidence, or ask you to clarify when the support is not strong enough.
+              Hi there! I'm EMU Assistant. I can help you find information about Eastern Mediterranean
+              University regulations. Ask me anything about attendance, grading, student policies, or more.
             </p>
           </article>
         </div>
 
-        <form id="chat-form" class="composer">
+        <div class="session-controls">
+          <label for="session-id">Session ID:</label>
+          <input type="text" id="session-id" value="public-ui" readonly />
+          <button id="new-session-btn">New Session</button>
+        </div>
+
+        <form id="chat-form" class="composer" aria-describedby="composer-help">
           <label class="sr-only" for="question">Question</label>
           <textarea
             id="question"
@@ -37,6 +49,9 @@
             <label class="check"><input id="cross" type="checkbox" /> Compare English and Turkish sources</label>
             <button id="ask" type="submit">Send</button>
           </div>
+          <p id="composer-help" class="composer-help">
+            Use cross-corpus comparison only when you want English and Turkish sources shown together.
+          </p>
         </form>
       </section>
 

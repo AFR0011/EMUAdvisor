@@ -105,11 +105,14 @@ class EmbeddingModeStoreTests(unittest.TestCase):
         store.recreate_collection()
         count = store.upsert_chunks([record], embedder)
         hits = store.query(embedder.encode_one("attendance"), limit=1, filters={"corpus": "regulations_en"})
+        health = store.health()
 
         self.assertEqual(count, 1)
         self.assertEqual(client.recreated, ("emu_regulations", 32))
         self.assertEqual(hits[0]["chunk_id"], "en-doc:c1")
         self.assertEqual(hits[0]["_dense_score"], 0.75)
+        self.assertEqual(health["backend"], "qdrant")
+        self.assertTrue(health["available"])
 
 
 class RetrievalTests(unittest.TestCase):

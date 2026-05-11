@@ -1,6 +1,6 @@
 # Sprint Status
 
-Last updated: 2026-05-05
+Last updated: 2026-05-07
 
 This records implementation status for the 24-48 hour sprint plan. `Implemented` means local code paths and tests exist. The presentable-demo pass now also has a live official-corpus crawl, assistant-curated 60-case candidate metrics, and a 50-case hard regression set for table/broad-query failures.
 
@@ -28,6 +28,23 @@ This records implementation status for the 24-48 hour sprint plan. `Implemented`
 | 19 Evaluation-first hardening | Implemented candidate pass | 60-case candidate set, failure analysis, demo README/snapshot, LLM status checks, retrieval scoring hardening, Qdrant backend envs. |
 | 20 Structured evidence hardening | Implemented regression pass | Table-aware ingestion, derived salary facts, scholarship topic bundles, cross-corpus diversification, `eval_sets/v1_hard.jsonl`, and refreshed metrics. |
 | 21 Demo split and mode benchmark foundation | Implemented | `/` simple chatbot, `/admin` diagnostics console, sanitized `/chat`, `eval_sets/emu_gold_seed.jsonl`, `docs/eval_spec.md`, and `--all-modes` metrics comparison. |
+| 22 Evaluation review workflow | Implemented foundation | `emu_advisor/eval_review.py` summarizes pending review status, exports CSV review sheets, and binds provisional seed cases against a corpus artifact. |
+| 23 Functional QA expansion | Implemented foundation | Added server tests for validation, special-character handling, admin-token behavior, security headers, analytics, and load-report fields. |
+| 24 Browser QA harness | Implemented optional | `tools/browser_smoke.py` runs a skip-safe Playwright desktop/mobile smoke; CI includes an optional browser job. |
+| 25 Input validation hardening | Implemented | `AskRequest` and `ChatRequest` trim/reject blank and overlong questions, restrict modes/styles, and return sanitized validation errors. |
+| 26 Admin and security headers | Implemented foundation | Optional `EMU_ADVISOR_ADMIN_TOKEN` protects admin/debug routes; production profile requires a token; CSP/no-sniff/frame/referrer headers are set. |
+| 27 CI baseline | Implemented | `.github/workflows/ci.yml` runs syntax, unit tests, evaluation validation, review status, and optional browser smoke. |
+| 28 Live Qdrant validation | Partial | `python -m emu_advisor.index health` exists; service-backed Qdrant still needs a live Docker/service run. |
+| 29 Local embedding benchmark | Implemented foundation | `python -m emu_advisor.benchmark embedding ...` records local embedding retrieval metrics and timings. |
+| 30 Generated mode characterization | Implemented foundation | `python -m emu_advisor.benchmark generation ...` probes local Ollama generated-mode latency and keeps extractive-first as the safe default. |
+| 31 UI polish pass | Implemented foundation | Public UI now shows scope chips, clearer state labels, citation metadata, improved loading/error states, and admin analytics. |
+| 32 Accessibility and responsive fixes | Implemented foundation | Added focus-visible styling, responsive scope/layout handling, better touch target sizing, and optional mobile browser smoke. |
+| 33 Performance and load pass | Implemented foundation | `load_test.py` now reports p50/p95, errors, fallback count, and CLI output for 50 active sessions. |
+| 34 Local analytics dashboard | Implemented | `/analytics` summarizes local audit logs and `/admin` displays query/event/latency counts without external telemetry. |
+| 35 Refresh and staleness workflow | Partial | Existing snapshot/diff activation remains; readiness and publication docs now expose refresh/staleness gates, but full stale-index enforcement still needs a live service pass. |
+| 36 Demo storyboard package | Implemented | `docs/DEMO_STORYBOARD.md` provides a repeatable board-demo story flow and example prompts. |
+| 37 Publication polish | Implemented foundation | `docs/PUBLICATION_CHECKLIST.md`, README updates, CI, and readiness docs support clean GitHub publication guardrails. |
+| 38 Board readiness validation | Implemented partial gate | `emu_advisor/readiness.py` generates `docs/BOARD_DEMO_READINESS.md`; current status is partial due to human-review and live-Qdrant blockers. |
 
 ## Validation Boundary
 

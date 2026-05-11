@@ -102,6 +102,7 @@ python -m emu_advisor.validate_jsonl tests\fixtures\canonical_chunks.valid.jsonl
 python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
 python -m emu_advisor.evaluation eval_sets\v1_hard.jsonl
 python -c "from emu_advisor.server import app; print(app.title)"
+python -m emu_advisor.eval_review status eval_sets\v1_gold.jsonl eval_sets\v1_hard.jsonl eval_sets\emu_gold_seed.jsonl
 ```
 
 4. Backend import/startup smoke, when backend dependencies are installed
@@ -128,6 +129,13 @@ python -m emu_advisor.metrics run --cases eval_sets\v1_hard.jsonl --chunks artif
 python -m emu_advisor.metrics run --all-modes --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\mode_comparison
 ```
 
+Human-review artifact helpers:
+
+```powershell
+python -m emu_advisor.eval_review export-csv --cases eval_sets\v1_gold.jsonl --out artifacts\review\v1_gold_review.csv
+python -m emu_advisor.eval_review bind-seed --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\review\emu_gold_seed.bound.jsonl
+```
+
 To attempt local generated-mode metrics with a bounded Ollama timeout:
 
 ```powershell
@@ -141,6 +149,7 @@ $env:EMU_ADVISOR_VECTOR_BACKEND="qdrant"
 $env:EMU_ADVISOR_QDRANT_URL="http://localhost:6333"
 $env:EMU_ADVISOR_QDRANT_COLLECTION="emu_regulations"
 python -m emu_advisor.index build --chunks artifacts\demo_corpus\latest\chunks.jsonl --backend qdrant --collection emu_regulations
+python -m emu_advisor.index health --backend qdrant --collection emu_regulations --qdrant-url http://localhost:6333
 ```
 
 For embedded local Qdrant storage without a running Qdrant server:
@@ -189,12 +198,45 @@ Then check:
 
 - `GET http://127.0.0.1:8000/metrics`
 - `GET http://127.0.0.1:8000/metrics/modes`
+- `GET http://127.0.0.1:8000/analytics`
 - `GET http://127.0.0.1:8000/corpus/status`
 - `GET http://127.0.0.1:8000/llm/status`
 - `POST http://127.0.0.1:8000/chat`
 - `POST http://127.0.0.1:8000/ask`
 - Browser load at `http://127.0.0.1:8000`
 - Browser load at `http://127.0.0.1:8000/admin`
+
+If `EMU_ADVISOR_ADMIN_TOKEN` is set, call admin/debug endpoints with either:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:EMU_ADVISOR_ADMIN_TOKEN" }
+Invoke-RestMethod http://127.0.0.1:8000/metrics -Headers $headers
+```
+
+For optional browser QA:
+
+```powershell
+python tools\browser_smoke.py --start-server --skip-if-unavailable
+```
+
+For local load reporting:
+
+```powershell
+python -m emu_advisor.load_test --chunks artifacts\demo_corpus\latest\chunks.jsonl --active-sessions 50 --max-workers 4
+```
+
+For local model probes:
+
+```powershell
+python -m emu_advisor.benchmark embedding --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --embedding hash
+python -m emu_advisor.benchmark generation --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --model qwen3:8b --timeout-s 30 --limit 5
+```
+
+For board readiness:
+
+```powershell
+python -m emu_advisor.readiness --out docs\BOARD_DEMO_READINESS.md
+```
 
 11. Legacy evaluation gate, when an old-demo index and query set exist
 

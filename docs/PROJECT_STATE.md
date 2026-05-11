@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-05-05
+Last updated: 2026-05-07
 
 ## Current Snapshot
 
@@ -17,6 +17,7 @@ Last updated: 2026-05-05
 - `docs/SPRINT_PLAN.md` now sequences implementation and testing into 24-48 hour sprints.
 - Sprint 1 has added the root canonical schema package, JSONL validator, schema docs, fixtures, and unit tests.
 - Sprints 2-17 now have root implementation scaffolds, local tests, and a real-corpus demo validation pass; see `docs/SPRINT_STATUS.md`.
+- Board-readiness continuation work from `docs/EMUAdvisor Full Analysis.md` has added strict request validation, optional admin-token protection, security headers, CI, browser-smoke tooling, local analytics, review helpers, benchmark probes, and board-demo documentation.
 
 ## Active Objective
 
@@ -50,6 +51,10 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - `emu_advisor/answer.py` and `citations.py` implement deterministic answerability, refusal, conflict, table answers, scholarship topic bundles, fallback, and citation behavior.
 - `emu_advisor/admin.py` provides snapshot/diff/activation workflow.
 - `emu_advisor/server.py`, `static/`, `audit_log.py`, and `load_test.py` provide the simple public chatbot at `/`, admin diagnostics at `/admin`, sanitized `/chat`, full `/ask`, LLM status diagnostics, privacy logging, and load simulation.
+- `emu_advisor/eval_review.py` exports human-review CSVs and can bind provisional seed cases against a built corpus artifact.
+- `emu_advisor/benchmark.py` runs local embedding and generated-mode probes without promoting generated mode by default.
+- `emu_advisor/readiness.py` generates `docs/BOARD_DEMO_READINESS.md` with explicit pass, partial, and blocked gates.
+- `tools/browser_smoke.py` provides an optional Playwright smoke for desktop/mobile public chat rendering.
 - `tests/fixtures/` contains valid and invalid canonical chunk fixtures.
 
 ## Verification State
@@ -59,10 +64,10 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - Legacy `.old/` Python syntax scan passed for 15 files.
 - Legacy `.old/backend` import smoke failed because `.old/backend/rag_adapter.py` imports `key` from `anyio`, which is not available in the installed AnyIO package.
 - Root schema unit tests passed: `python -m unittest discover -s tests`.
-- Full root test suite passed: 49 tests.
+- Full root test suite passed: 58 tests after the board-readiness foundation pass.
 - Canonical valid chunk fixture passed JSONL validation.
 - Canonical invalid chunk fixture failed validation as expected with field-level errors.
-- Root package/test syntax scan passed for 29 files.
+- Root package/test/tool syntax scan passed for 35 files.
 - Candidate evaluation set validation passed for 60 cases: 30 English, 30 Turkish, 48 answerable, 4 refusal, 4 clarification, and 4 conflict/cross-source cases.
 - Provisional gold seed validation is expected to pass for 50 source-binding-pending cases, but those cases are not human-reviewed or adjudicated.
 - FastAPI app import smoke passed: app title `EMU Regulation Assistant`.
@@ -75,6 +80,7 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - Mode comparison now has an executable path through `python -m emu_advisor.metrics run --all-modes --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\mode_comparison`.
 - Latest provisional seed mode comparison wrote ignored artifacts under `artifacts/metrics/mode_comparison`: balanced total score 0.863 / top-5 84.0% / p50 315 ms / 8 failed cases; expensive total score 0.863 / top-5 84.0% / p50 342 ms / 8 failed cases; cheap total score 0.831 / top-5 80.0% / p50 276 ms / 10 failed cases.
 - Embedded local Qdrant indexing was validated with `artifacts/qdrant/latest`, 8,714 chunks, 256 dimensions, and collection `emu_regulations`.
+- Board readiness report currently marks the demo as `partial`: presentable locally, but blocked on human-reviewed gold status and service-backed Qdrant validation.
 - No campus/server deployment environment is documented yet.
 
 ## Known Risks
@@ -86,6 +92,8 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - The `.old/` archive contains `__pycache__` files, but `.old/` is ignored by the root repo.
 - The `.old/` backend currently fails import in this environment because of an existing AnyIO import issue.
 - Generated mode depends on an available local Ollama `qwen3:8b`; the current bounded smoke run timed out at 2 seconds, so extractive fallback remains the validated continuity path.
+- Admin/debug endpoints are protected only when `EMU_ADVISOR_ADMIN_TOKEN` is configured; production profile now requires that token at startup.
+- Optional Playwright browser smoke depends on local browser availability and is skip-safe when dependencies are unavailable.
 - Broad scholarship prompts use deterministic grouped subqueries; p50 remains under 1 second, but p95 is higher than direct extractive questions.
 - The 60-case evaluation set and 50-case hard regression set are assistant-curated pending human review; do not label either as human-reviewed.
 - The 50-case provisional gold seed is converted from the comprehensive analysis document, but several cases still need exact source/chunk binding and human adjudication before the scores can be presented as gold-standard results.
@@ -100,3 +108,5 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 6. Diagnose `qwen3:8b` runtime latency beyond the 2-second smoke limit and benchmark streaming first-token latency on target hardware.
 7. Benchmark `qwen3-embedding:4b` indexing on target hardware.
 8. Confirm target deployment hardware and local-service permissions with IT before latency or serving commitments.
+9. Run the optional Playwright smoke on a machine with browser dependencies installed.
+10. Configure `EMU_ADVISOR_ADMIN_TOKEN` before any production-profile demo.

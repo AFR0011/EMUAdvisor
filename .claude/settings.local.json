@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv\\\\Scripts\\\\python.exe -m unittest discover -s tests)",
+      "Bash(python -m unittest discover -s tests)",
+      "Bash(python -c \"from emu_advisor.server import create_app; app = create_app\\(\\); print\\('Server loaded successfully'\\)\")"
+    ]
+  }
+}

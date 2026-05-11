@@ -38,11 +38,11 @@ class OllamaGenerator:
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
 
-    def generate(self, query: str, hits: List[Mapping[str, Any]]) -> GenerationResult:
+    def generate(self, query: str, hits: List[Mapping[str, Any]], conversation_history: Optional[List[Mapping[str, str]]] = None) -> GenerationResult:
         import httpx
 
         started = time.perf_counter()
-        prompt = build_prompt(query, hits)
+        prompt = build_prompt(query, hits, conversation_history)
         try:
             response = httpx.post(
                 f"{self.base_url}/api/generate",
@@ -107,12 +107,12 @@ class OllamaGenerator:
         status["latency_ms"] = int((time.perf_counter() - started) * 1000)
         return status
 
-    def stream(self, query: str, hits: List[Mapping[str, Any]]) -> Iterator[Dict[str, Any]]:
+    def stream(self, query: str, hits: List[Mapping[str, Any]], conversation_history: Optional[List[Mapping[str, str]]] = None) -> Iterator[Dict[str, Any]]:
         import httpx
 
         started = time.perf_counter()
         first_token_ms: Optional[int] = None
-        prompt = build_prompt(query, hits)
+        prompt = build_prompt(query, hits, conversation_history)
         try:
             with httpx.stream(
                 "POST",
@@ -154,7 +154,22 @@ class OllamaGenerator:
             }
 
 
-def build_prompt(query: str, hits: List[Mapping[str, Any]]) -> str:
+def build_prompt(query: str, hits: List[Mapping[str, Any]], conversation_history: Optional[List[Mapping[str, str]]] = None) -> str:
+    # Build conversation context if provided
+    conversation_part = ""
+    if conversation_history:
+        # Cap at last 6 exchanges (12 messages) to stay in context
+        history = conversation_history[-12:]
+        conv_lines = []
+        for msg in history:
+            role = msg.get("role", "user")
+            content = msg.get("content", msg.get("text", ""))
+            if role == "user":
+                conv_lines.append(f"User: {content}")
+            else:
+                conv_lines.append(f"Assistant: {content}")
+        conversation_part = "\n\nPrevious Conversation:\n" + "\n".join(conv_lines)
+
     evidence = []
     for idx, hit in enumerate(hits[:8], start=1):
         citation = f"{hit.get('source_title')} | {hit.get('section_path') or hit.get('article_number') or ''} | {hit.get('source_url')}"
@@ -162,6 +177,7 @@ def build_prompt(query: str, hits: List[Mapping[str, Any]]) -> str:
     return (
         "You are a local-only EMU Regulation Assistant. Answer only from the cited evidence. "
         "If evidence is incomplete, say so. Do not claim to be the university's final official answer. "
-        "Do not show hidden reasoning or chain-of-thought; write only the final concise answer.\n\n"
+        "Do not show hidden reasoning or chain-of-thought; write only the final concise answer."
+        f"{conversation_part}\n\n"
         f"Question: {query}\n\nEvidence:\n" + "\n\n".join(evidence) + "\n\nAnswer with citations by bracket number."
     )

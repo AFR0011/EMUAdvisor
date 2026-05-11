@@ -1,0 +1,62 @@
+name: EMUAdvisor CI
+
+on:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Syntax scan
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          failed = []
+          checked = 0
+          for base in [Path("emu_advisor"), Path("tests"), Path("tools")]:
+              for path in base.rglob("*.py"):
+                  checked += 1
+                  try:
+                      ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                  except Exception as exc:
+                      failed.append((str(path), repr(exc)))
+          if failed:
+              for path, exc in failed:
+                  print(path, exc)
+              raise SystemExit(1)
+          print(f"syntax ok: {checked} files")
+          PY
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+      - name: Evaluation set validation
+        run: |
+          python -m emu_advisor.evaluation eval_sets/v1_gold.jsonl
+          python -m emu_advisor.evaluation eval_sets/v1_hard.jsonl
+          python -m emu_advisor.evaluation eval_sets/emu_gold_seed.jsonl
+      - name: Review status check
+        run: python -m emu_advisor.eval_review status eval_sets/v1_gold.jsonl eval_sets/v1_hard.jsonl eval_sets/emu_gold_seed.jsonl
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m playwright install chromium
+      - name: Optional browser smoke
+        run: python tools/browser_smoke.py --start-server --skip-if-unavailable

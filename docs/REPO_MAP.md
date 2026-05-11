@@ -1,6 +1,6 @@
 # Repo Map
 
-Last updated: 2026-05-05
+Last updated: 2026-05-07
 
 ## Workspace Shape
 
@@ -23,6 +23,9 @@ EMUAdvisor/
     VERSION_LOG.md
     MIGRATION_BACKLOG.md
     RELEASE_CANDIDATE.md
+    BOARD_DEMO_READINESS.md
+    DEMO_STORYBOARD.md
+    PUBLICATION_CHECKLIST.md
   emu_advisor/
     __init__.py
     admin.py
@@ -30,9 +33,11 @@ EMUAdvisor/
     audit_log.py
     citations.py
     corpus.py
+    benchmark.py
     demo.py
     embeddings.py
     evaluation.py
+    eval_review.py
     generation.py
     html_ingest.py
     load_test.py
@@ -41,6 +46,7 @@ EMUAdvisor/
     pdf_ingest.py
     pipeline.py
     retrieval.py
+    readiness.py
     routing.py
     server.py
     schema.py
@@ -64,6 +70,11 @@ EMUAdvisor/
       canonical_chunks.valid.jsonl
       canonical_chunks.invalid.jsonl
     test_schema.py
+  tools/
+    browser_smoke.py
+  .github/
+    workflows/
+      ci.yml
   .old/
     README.md
     requirements-full.txt
@@ -109,6 +120,9 @@ EMUAdvisor/
 - `docs/PROJECT_STATUS_PROGRESS_PLAN.md`: current status, achieved progress, validated metrics, limitations, and forward plan.
 - `docs/RELEASE_CANDIDATE.md`: live demo release notes, measured metrics, and remaining production gaps.
 - `docs/DEMO_METRICS_SNAPSHOT.md`: concise tracked snapshot of current demo corpus, metrics, sample outputs, and limits.
+- `docs/BOARD_DEMO_READINESS.md`: generated board-demo readiness status with explicit blocked gates.
+- `docs/DEMO_STORYBOARD.md`: repeatable stakeholder demo script.
+- `docs/PUBLICATION_CHECKLIST.md`: clean GitHub publication checklist and wording guardrails.
 - `docs/eval_spec.md`: scoring rubric, case status rules, and mode-comparison instructions.
 - `emu_advisor/schema.py`: dependency-free canonical schema validation and legacy chunk mapping.
 - `emu_advisor/validate_jsonl.py`: JSONL validator CLI for canonical records.
@@ -116,10 +130,14 @@ EMUAdvisor/
 - `emu_advisor/pipeline.py`: polite official-host crawl/build CLI for canonical demo artifacts.
 - `emu_advisor/corpus.py`: active corpus artifact loader, fixture fallback, and corpus status reporting.
 - `emu_advisor/metrics.py`: evaluation runner that emits JSON/Markdown/CSV metrics, human-review CSV, failure analysis, and cheap/balanced/expensive comparison reports.
+- `emu_advisor/eval_review.py`: review-status summary, human-review CSV export, and provisional seed binding helpers.
+- `emu_advisor/benchmark.py`: local embedding and generated-mode benchmark probes.
 - `emu_advisor/generation.py`: local Ollama generated-answer adapter with extractive fallback.
 - `emu_advisor/retrieval.py`, `store.py`, `embeddings.py`, `modes.py`, and `index.py`: local/Qdrant retrieval stack and index build CLI.
 - `emu_advisor/answer.py` and `citations.py`: answerability, table answers, scholarship topic bundles, fallback, conflict, and citations.
-- `emu_advisor/server.py` and `static/`: FastAPI demo and UI; `/` is the simple chatbot, `/admin` is the diagnostic console, `/chat` is sanitized, and `/ask` remains the full diagnostic endpoint.
+- `emu_advisor/server.py` and `static/`: FastAPI demo and UI; `/` is the simple chatbot, `/admin` is the diagnostic console, `/chat` is sanitized, `/ask` remains the full diagnostic endpoint, `/analytics` summarizes local audit logs, and admin/debug routes can be token-protected.
+- `emu_advisor/readiness.py`: board-demo readiness report generator.
+- `tools/browser_smoke.py`: optional Playwright desktop/mobile browser smoke.
 - `eval_sets/emu_gold_seed.jsonl`: 50-case provisional seed converted from `docs/gold-set-comprehensive-analysis.md`, pending exact source/chunk binding and human review.
 - `eval_sets/v1_gold.jsonl`: current 60-case assistant-curated bilingual candidate set pending human review.
 - `eval_sets/v1_hard.jsonl`: 50-case assistant-curated hard regression set for table-derived salary and broad scholarship failures.
@@ -222,6 +240,10 @@ Official EMU regulation HTML/PDF sources
 - Root metrics: `python -m emu_advisor.metrics run ...`.
 - Root mode comparison: `python -m emu_advisor.metrics run --all-modes --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\mode_comparison`.
 - Root Qdrant/local index build: `python -m emu_advisor.index build ...`.
+- Root Qdrant health check: `python -m emu_advisor.index health ...`.
+- Root review status: `python -m emu_advisor.eval_review status eval_sets\v1_gold.jsonl eval_sets\v1_hard.jsonl eval_sets\emu_gold_seed.jsonl`.
+- Root benchmark probe: `python -m emu_advisor.benchmark embedding --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --embedding hash`.
+- Root readiness report: `python -m emu_advisor.readiness --out docs\BOARD_DEMO_READINESS.md`.
 - Retrieval smoke: `6.TestRetrieve.py`, `7.RetrieveHybrid.py`, or `8.RerankMultilingualV7_3.py` with a built index.
 - Legacy evaluation: `EvaluateRetrieval.py` with a built index and query set.
 - Backend: `python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000` from the root repo.

@@ -78,6 +78,15 @@ class LocalVectorStore:
     def filter(self, *, filters: Mapping[str, Any]) -> List[Dict[str, Any]]:
         return [dict(point.payload) for point in self.points.values() if _matches_filters(point.payload, filters)]
 
+    def health(self) -> Dict[str, Any]:
+        return {
+            "backend": "local",
+            "collection": self.collection_name,
+            "available": True,
+            "points": len(self.points),
+            "dimensions": self.dimensions,
+        }
+
 
 def _matches_filters(payload: Mapping[str, Any], filters: Mapping[str, Any]) -> bool:
     for key, expected in filters.items():
@@ -212,6 +221,36 @@ class QdrantVectorStore:
             limit=10000,
         )
         return [dict(point.payload or {}) for point in points]
+
+    def health(self) -> Dict[str, Any]:
+        try:
+            if self.models is None:
+                if hasattr(self.client, "health"):
+                    return dict(self.client.health(self.collection_name))
+                return {"backend": "qdrant", "collection": self.collection_name, "available": True}
+            exists = True
+            points = None
+            if hasattr(self.client, "collection_exists"):
+                exists = bool(self.client.collection_exists(self.collection_name))
+            if exists and hasattr(self.client, "get_collection"):
+                info = self.client.get_collection(collection_name=self.collection_name)
+                points = getattr(info, "points_count", None)
+            return {
+                "backend": "qdrant",
+                "collection": self.collection_name,
+                "available": bool(exists),
+                "points": points,
+                "dimensions": self.dimensions,
+            }
+        except Exception as exc:
+            return {
+                "backend": "qdrant",
+                "collection": self.collection_name,
+                "available": False,
+                "points": None,
+                "dimensions": self.dimensions,
+                "error": str(exc),
+            }
 
     def close(self) -> None:
         if self._owns_client and hasattr(self.client, "close"):

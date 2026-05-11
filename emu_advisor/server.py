@@ -8,12 +8,13 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .answer import (
     SCHOLARSHIP_EVIDENCE_GROUPS,
@@ -23,13 +24,15 @@ from .answer import (
     progressive_answer_events,
     scholarship_group_query,
 )
-from .audit_log import AuditEvent, AuditLogger
+from .audit_log import AuditEvent, AuditLogger, summarize_audit_log
+from .conversation_detection import expand_follow_up_query, is_casual_message
+from .conversation_store import get_store
 from .corpus import load_corpus, load_latest_metrics
 from .embeddings import create_embedding_model
 from .generation import DEFAULT_OLLAMA_LLM, OllamaGenerator
 from .modes import MODE_PRESETS
 from .retrieval import HybridRetriever
-from .routing import route_query
+from .routing import detect_query_language, route_query
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -42,7 +45,22 @@ class AskRequest(BaseModel):
     mode: str = "balanced"
     session_id: Optional[str] = None
     cross_corpus: bool = False
-    answer_style: str = "both"
+    answer_style: Literal["extractive", "generated", "both"] = "both"
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        value = _clean_question(value)
+        return value
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if value not in MODE_PRESETS:
+            allowed = ", ".join(sorted(MODE_PRESETS))
+            raise ValueError(f"mode must be one of: {allowed}")
+        return value
 
 
 class ChatRequest(BaseModel):
@@ -50,12 +68,20 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     cross_corpus: bool = False
 
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        return _clean_question(value)
+
 
 def create_app() -> FastAPI:
     corpus = load_corpus()
     chunks = corpus.chunks
     embedder = create_embedding_model(os.getenv("EMU_ADVISOR_EMBEDDING", "hash"))
     runtime_profile = os.getenv("EMU_ADVISOR_PROFILE", "dev").casefold()
+    admin_token = os.getenv("EMU_ADVISOR_ADMIN_TOKEN", "").strip()
+    if runtime_profile == "production" and not admin_token:
+        raise RuntimeError("EMU_ADVISOR_ADMIN_TOKEN is required when EMU_ADVISOR_PROFILE=production")
     vector_backend = os.getenv("EMU_ADVISOR_VECTOR_BACKEND") or ("qdrant" if runtime_profile == "production" else "local")
     require_qdrant = runtime_profile == "production" or os.getenv("EMU_ADVISOR_REQUIRE_QDRANT", "").casefold() in {"1", "true", "yes"}
     retriever = HybridRetriever(
@@ -75,6 +101,7 @@ def create_app() -> FastAPI:
         num_predict=int(os.getenv("EMU_ADVISOR_LLM_NUM_PREDICT", "320")),
         num_ctx=int(os.getenv("EMU_ADVISOR_LLM_NUM_CTX", "4096")),
     )
+    store = get_store()
     logger = AuditLogger(ROOT_DIR / "logs" / "audit.jsonl")
 
     @asynccontextmanager
@@ -87,6 +114,21 @@ def create_app() -> FastAPI:
                 close()
 
     app = FastAPI(title="EMU Regulation Assistant", lifespan=lifespan)
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": _safe_validation_errors(exc.errors())})
+
+    @app.middleware("http")
+    async def board_readiness_middleware(request: Request, call_next):
+        if _requires_admin_token(request, configured_token=admin_token):
+            provided = _provided_admin_token(request)
+            if not provided or provided != admin_token:
+                return _with_security_headers(
+                    JSONResponse(status_code=401, content={"detail": "admin authentication required"}),
+                    request=request,
+                )
+        response = await call_next(request)
+        return _with_security_headers(response, request=request)
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -137,6 +179,10 @@ def create_app() -> FastAPI:
             **_load_json_if_exists(ROOT_DIR / "artifacts" / "metrics" / "mode_comparison" / "comparison.json"),
         }
 
+    @app.get("/analytics")
+    def analytics() -> Dict[str, Any]:
+        return summarize_audit_log(ROOT_DIR / "logs" / "audit.jsonl")
+
     @app.get("/llm/status")
     def llm_status(smoke: bool = False) -> Dict[str, Any]:
         return generator.status(timeout_s=llm_probe_timeout_s, smoke=smoke)
@@ -147,17 +193,213 @@ def create_app() -> FastAPI:
 
     @app.post("/chat")
     def chat(request: ChatRequest) -> Dict[str, Any]:
-        payload = _answer_request(
-            AskRequest(
-                question=request.question,
-                mode="balanced",
-                session_id=request.session_id,
-                cross_corpus=request.cross_corpus,
-                answer_style="extractive",
-            ),
-            event_type="chat",
+        return _handle_chat(request, prefer_generated=False)
+
+    @app.post("/chat/stream")
+    def chat_stream(request: ChatRequest) -> StreamingResponse:
+        return _handle_chat_stream(request)
+
+    def _handle_chat(request: ChatRequest, *, prefer_generated: bool = False) -> Dict[str, Any]:
+        """Handle a chat request with session management, casual detection, and full pipeline."""
+        # Get or create session
+        session_id = request.session_id
+        session = store.get_session(session_id)
+        if session is None:
+            session_id = store.create_session(session_id)
+            session = store.get_session(session_id)
+
+        # Get conversation history for LLM
+        conversation_history = store.get_history(session_id)
+
+        # Check for casual message first (short-circuit retrieval)
+        is_casual, category, casual_response = is_casual_message(request.question)
+        if is_casual:
+            # Log the casual interaction
+            store.add_message(session_id, "user", request.question)
+            store.add_message(session_id, "assistant", casual_response)
+
+            total_ms = _elapsed_ms(time.perf_counter())
+            logger.log(
+                AuditEvent(
+                    event_type="chat_casual",
+                    query=request.question,
+                    session_id=session_id,
+                    route={"query_language": detect_query_language(request.question), "in_scope": True},
+                    answer_mode="casual",
+                    latency_ms=total_ms,
+                    citation_ids=[],
+                )
+            )
+            return {
+                "session_id": session_id,
+                "answer": casual_response,
+                "state": "casual",
+                "answer_type": category,
+                "language": detect_query_language(request.question),
+                "citations": [],
+                "evidence_groups": [],
+            }
+
+        # Expand follow-up queries
+        if conversation_history and is_follow_up(request.question):
+            # Get last substantive exchange from history
+            last_topic = ""
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_topic = msg.get("content", "")
+                    break
+            if last_topic:
+                expanded_query = expand_follow_up_query(request.question, last_topic)
+            else:
+                expanded_query = request.question
+        else:
+            expanded_query = request.question
+
+        # Route and retrieve
+        route = route_query(expanded_query, explicit_cross_corpus=request.cross_corpus)
+
+        if not route.in_scope:
+            store.add_message(session_id, "user", request.question)
+            store.add_message(session_id, "assistant", "I cannot answer questions outside the scope of EMU regulations.")
+            return {
+                "session_id": session_id,
+                "answer": "I cannot answer questions outside the scope of EMU regulations.",
+                "state": "out_of_scope",
+                "answer_type": "refusal",
+                "language": route.query_language,
+                "citations": [],
+                "evidence_groups": [],
+            }
+
+        hits = retriever.retrieve(expanded_query, mode="balanced", route=route, top_k=8)
+
+        # Build extractive answer (for citations and grounding)
+        extractive_answer = build_extractive_answer(expanded_query, hits)
+
+        # Generate LLM answer with conversation history
+        generated_answer = None
+        generated_error = None
+        generation_ms = None
+
+        status = generator.status(timeout_s=llm_probe_timeout_s, smoke=False)
+        if status.get("model_available"):
+            generation_hits = extractive_answer.decision.supported_hits if extractive_answer.mode in {"answer", "answer_uncertain"} else []
+            if generation_hits:
+                generated = generator.generate(expanded_query, generation_hits, conversation_history)
+                generation_ms = generated.latency_ms
+                generated_error = generated.error
+                generated_answer = generated.text or None
+
+        # Store messages
+        store.add_message(session_id, "user", request.question)
+        store.add_message(session_id, "assistant", generated_answer or extractive_answer.text)
+
+        final_answer = generated_answer if prefer_generated and generated_answer else extractive_answer.text
+        citations = [citation.as_dict() for citation in extractive_answer.citations]
+
+        total_ms = _elapsed_ms(time.perf_counter())
+        logger.log(
+            AuditEvent(
+                event_type="chat",
+                query=request.question,
+                session_id=session_id,
+                route=route.__dict__,
+                answer_mode="both",
+                latency_ms=total_ms,
+                citation_ids=[citation["chunk_id"] for citation in citations],
+            )
         )
-        return _sanitize_chat_payload(payload)
+
+        return {
+            "session_id": session_id,
+            "answer": final_answer,
+            "extractive_answer": extractive_answer.text,
+            "generated_answer": generated_answer,
+            "generated_error": generated_error,
+            "state": extractive_answer.mode,
+            "answer_type": extractive_answer.answer_type,
+            "language": route.query_language,
+            "citations": citations,
+            "evidence_groups": extractive_answer.evidence_groups,
+            "latency_ms": total_ms,
+        }
+
+    def _handle_chat_stream(request: ChatRequest) -> StreamingResponse:
+        """Handle streaming chat request with NDJSON output."""
+        import asyncio
+
+        session_id = request.session_id
+        session = store.get_session(session_id)
+        if session is None:
+            session_id = store.create_session(session_id)
+
+        # Get conversation history
+        conversation_history = store.get_history(session_id)
+
+        # Check for casual message
+        is_casual, category, casual_response = is_casual_message(request.question)
+        if is_casual:
+            store.add_message(session_id, "user", request.question)
+            store.add_message(session_id, "assistant", casual_response)
+
+            def casual_events():
+                yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "casual", "category": category, "text": casual_response}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
+
+            return StreamingResponse(casual_events(), media_type="application/x-ndjson")
+
+        # Expand follow-up
+        if conversation_history and is_follow_up(request.question):
+            last_topic = ""
+            for msg in reversed(conversation_history):
+                if msg.get("role") == "user":
+                    last_topic = msg.get("content", "")
+                    break
+            if last_topic:
+                expanded_query = expand_follow_up_query(request.question, last_topic)
+            else:
+                expanded_query = request.question
+        else:
+            expanded_query = request.question
+
+        route = route_query(expanded_query, explicit_cross_corpus=request.cross_corpus)
+
+        if not route.in_scope:
+            store.add_message(session_id, "user", request.question)
+            store.add_message(session_id, "assistant", "I cannot answer questions outside the scope of EMU regulations.")
+
+            def out_of_scope_events():
+                yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "refusal", "text": "I cannot answer questions outside the scope of EMU regulations."}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
+
+            return StreamingResponse(out_of_scope_events(), media_type="application/x-ndjson")
+
+        hits = retriever.retrieve(expanded_query, mode="balanced", route=route, top_k=8)
+        extractive_answer = build_extractive_answer(expanded_query, hits)
+        citations = [citation.as_dict() for citation in extractive_answer.citations]
+
+        def stream_events():
+            # Session event
+            yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
+            # Citations event
+            yield json.dumps({"type": "citations", "citations": citations}, ensure_ascii=False) + "\n"
+            # Generated delta events
+            status = generator.status(timeout_s=llm_probe_timeout_s, smoke=False)
+            if status.get("model_available"):
+                generation_hits = extractive_answer.decision.supported_hits if extractive_answer.mode in {"answer", "answer_uncertain"} else []
+                if generation_hits:
+                    for delta in generator.stream(expanded_query, generation_hits, conversation_history):
+                        yield json.dumps(delta, ensure_ascii=False) + "\n"
+                else:
+                    yield json.dumps({"type": "generated_delta", "text": extractive_answer.text}, ensure_ascii=False) + "\n"
+                    yield json.dumps({"type": "generation_done", "model": generator.model, "latency_ms": 0}, ensure_ascii=False) + "\n"
+            else:
+                yield json.dumps({"type": "generated_delta", "text": extractive_answer.text}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "generation_done", "model": generator.model, "latency_ms": 0, "error": "OLLAMA_UNAVAILABLE"}, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(stream_events(), media_type="application/x-ndjson")
 
     def _answer_request(request: AskRequest, *, event_type: str = "ask") -> Dict[str, Any]:
         total_started = time.perf_counter()
@@ -318,44 +560,61 @@ def _load_json_if_exists(path: Path) -> Dict[str, Any]:
     return payload
 
 
-def _sanitize_chat_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    safe_citations = []
-    for citation in payload.get("citations", []):
-        safe_citations.append(
-            {
-                "label": citation.get("label"),
-                "source_title": citation.get("source_title"),
-                "source_url": citation.get("source_url"),
-                "section_path": citation.get("section_path"),
-                "article_number": citation.get("article_number"),
-                "page_number": citation.get("page_number"),
-            }
-        )
-    return {
-        "answer": payload.get("answer") or payload.get("extractive_answer") or "",
-        "state": payload.get("mode"),
-        "answer_type": payload.get("answer_type"),
-        "language": (payload.get("route") or {}).get("query_language"),
-        "citations": safe_citations,
-        "evidence_groups": _sanitize_evidence_groups(payload.get("evidence_groups") or []),
-    }
+def _clean_question(value: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError("question must be text")
+    value = value.strip()
+    if not value:
+        raise ValueError("question cannot be blank")
+    if len(value) > 2000:
+        raise ValueError("question must be 2000 characters or fewer")
+    return value
 
 
-def _sanitize_evidence_groups(groups: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-    safe_groups = []
-    for group in groups:
-        safe_groups.append(
+def _safe_validation_errors(errors: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    safe = []
+    for error in errors:
+        safe.append(
             {
-                "title": group.get("title"),
-                "summary": group.get("summary"),
-                "citations": [
-                    {
-                        "label": citation.get("label"),
-                        "source_title": citation.get("source_title"),
-                        "source_url": citation.get("source_url"),
-                    }
-                    for citation in group.get("citations", [])
-                ],
+                "loc": list(error.get("loc", [])),
+                "msg": error.get("msg", "invalid request"),
+                "type": error.get("type", "value_error"),
             }
         )
-    return safe_groups
+    return safe
+
+
+def _provided_admin_token(request: Request) -> Optional[str]:
+    bearer = request.headers.get("authorization", "")
+    if bearer.casefold().startswith("bearer "):
+        return bearer[7:].strip()
+    header_token = request.headers.get("x-emu-admin-token")
+    if header_token:
+        return header_token.strip()
+    query_token = request.query_params.get("admin_token")
+    if query_token:
+        return query_token.strip()
+    return None
+
+
+def _requires_admin_token(request: Request, *, configured_token: str) -> bool:
+    if not configured_token:
+        return False
+    path = request.url.path.rstrip("/") or "/"
+    protected_exact = {"/admin", "/ask", "/metrics", "/metrics/modes", "/analytics", "/corpus/status"}
+    if path in protected_exact or path.startswith("/ask/"):
+        return True
+    if path == "/llm/status" and request.query_params.get("smoke", "").casefold() in {"1", "true", "yes"}:
+        return True
+    return False
+
+
+def _with_security_headers(response, *, request: Request):
+    response.headers.setdefault("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.url.scheme == "https" or os.getenv("EMU_ADVISOR_ENABLE_HSTS", "").casefold() in {"1", "true", "yes"}:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response

@@ -58,17 +58,21 @@ class HybridRetriever:
                     url=qdrant_url,
                     path=qdrant_path,
                 )
+                self.store.upsert_chunks(self.chunks, self.embedder)
             except Exception as exc:
                 if require_qdrant:
-                    raise
+                    raise RuntimeError(
+                        f"Qdrant backend is required but unavailable for collection {qdrant_collection}: {exc}"
+                    ) from exc
                 self.store = LocalVectorStore(dimensions=self.embedder.dimensions)
                 self.vector_backend = "local"
                 self.backend_warning = f"Qdrant unavailable, using local fallback: {exc}"
+                self.store.upsert_chunks(self.chunks, self.embedder)
         elif vector_backend == "local":
             self.store = LocalVectorStore(dimensions=self.embedder.dimensions)
+            self.store.upsert_chunks(self.chunks, self.embedder)
         else:
             raise ValueError(f"unknown vector backend: {vector_backend}")
-        self.store.upsert_chunks(self.chunks, self.embedder)
 
     def retrieve(
         self,

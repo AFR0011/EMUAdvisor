@@ -47,6 +47,35 @@ def build_index(
     }
 
 
+def check_index_health(
+    *,
+    backend: str,
+    collection: str,
+    qdrant_url: str,
+    qdrant_path: Optional[str],
+    embedding: str,
+) -> Dict[str, Any]:
+    embedder = create_embedding_model(embedding)
+    if backend == "qdrant":
+        store = QdrantVectorStore(
+            collection_name=collection,
+            dimensions=embedder.dimensions,
+            url=qdrant_url,
+            path=qdrant_path,
+        )
+    elif backend == "local":
+        store = LocalVectorStore(collection_name=collection, dimensions=embedder.dimensions)
+    else:
+        raise ValueError(f"unknown backend: {backend}")
+    try:
+        health = store.health()
+    finally:
+        if hasattr(store, "close"):
+            store.close()
+    health.setdefault("embedding_model", embedder.metadata.model_name)
+    return health
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build an EMU Advisor vector index.")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -57,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--qdrant-url", default="http://localhost:6333")
     build.add_argument("--qdrant-path", type=str, default=None, help="Use embedded local Qdrant storage instead of a server URL.")
     build.add_argument("--embedding", default="hash")
+    health = sub.add_parser("health")
+    health.add_argument("--backend", choices=("qdrant", "local"), default="qdrant")
+    health.add_argument("--collection", default="emu_regulations")
+    health.add_argument("--qdrant-url", default="http://localhost:6333")
+    health.add_argument("--qdrant-path", type=str, default=None)
+    health.add_argument("--embedding", default="hash")
     return parser
 
 
@@ -65,6 +100,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.cmd == "build":
         result = build_index(
             chunks_path=args.chunks,
+            backend=args.backend,
+            collection=args.collection,
+            qdrant_url=args.qdrant_url,
+            qdrant_path=args.qdrant_path,
+            embedding=args.embedding,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+    if args.cmd == "health":
+        result = check_index_health(
             backend=args.backend,
             collection=args.collection,
             qdrant_url=args.qdrant_url,

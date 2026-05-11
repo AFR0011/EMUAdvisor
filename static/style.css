@@ -28,6 +28,11 @@ select {
   font: inherit;
 }
 
+:focus-visible {
+  outline: 3px solid rgba(242, 181, 29, 0.7);
+  outline-offset: 3px;
+}
+
 button {
   border: 0;
   border-radius: 8px;
@@ -105,15 +110,44 @@ a {
   letter-spacing: 0;
 }
 
+.header-copy {
+  max-width: 58ch;
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.45;
+}
+
 .chat-card {
   display: grid;
-  grid-template-rows: minmax(360px, 62vh) auto;
+  grid-template-rows: auto minmax(360px, 60vh) auto;
   margin-top: 26px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   box-shadow: 0 18px 50px rgba(6, 38, 71, 0.16);
   overflow: hidden;
+}
+
+.scope-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+.scope-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(6, 38, 71, 0.14);
+  border-radius: 8px;
+  color: var(--navy);
+  background: white;
+  font-size: 0.84rem;
+  font-weight: 800;
 }
 
 .messages {
@@ -147,12 +181,84 @@ a {
   background: var(--soft);
 }
 
+.message.error,
+.message.state-refuse {
+  background: #fff3f1;
+}
+
+.message.state-clarify,
+.message.state-answer_uncertain {
+  background: #fff8e5;
+}
+
+.message.state-show_conflict {
+  background: #f2f0ff;
+}
+
+/* Typing indicator for streaming responses */
+.message.typing .typing-text {
+  display: inline;
+}
+
+.message.typing .typing-indicator,
+.message.streaming .typing-indicator {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.message.typing .typing-indicator span,
+.message.streaming .typing-indicator span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: bounce 1.2s infinite ease-in-out;
+}
+
+.message.typing .typing-indicator span:nth-child(1),
+.message.streaming .typing-indicator span:nth-child(1) {
+  animation-delay: -0.24s;
+}
+
+.message.typing .typing-indicator span:nth-child(2),
+.message.streaming .typing-indicator span:nth-child(2) {
+  animation-delay: -0.12s;
+}
+
+.message.typing .typing-indicator span:nth-child(3),
+.message.streaming .typing-indicator span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-4px);
+  }
+}
+
 .answer-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
   margin-bottom: 8px;
-  color: var(--muted);
+  color: var(--navy);
   font-size: 0.84rem;
   font-weight: 800;
   text-transform: uppercase;
+}
+
+.answer-state span {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: white;
 }
 
 .composer {
@@ -167,6 +273,13 @@ a {
   gap: 14px;
   align-items: center;
   margin-top: 12px;
+}
+
+.composer-help {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .check {
@@ -186,6 +299,17 @@ a {
 .public-citations ol {
   margin: 8px 0 0 20px;
   padding: 0;
+}
+
+.public-citations li {
+  margin-top: 6px;
+}
+
+.public-citations span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
 .mini-group {
@@ -249,7 +373,7 @@ a {
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -404,6 +528,31 @@ summary {
   border: 0;
 }
 
+.session-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.session-controls button {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.session-controls .session-info {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
 @media (max-width: 900px) {
   .controls,
   .metrics,
@@ -424,10 +573,14 @@ summary {
   }
 
   .chat-card {
-    grid-template-rows: minmax(300px, 54vh) auto;
+    grid-template-rows: auto minmax(300px, 52vh) auto;
   }
 
   .message {
     max-width: 100%;
+  }
+
+  button {
+    min-height: 46px;
   }
 }

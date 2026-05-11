@@ -92,6 +92,16 @@ Use this log for meaningful project milestones only.
 - Recorded generated metrics with `qwen3:8b` as unavailable under the 2-second smoke limit despite model detection; extractive fallback remains verified.
 - Verified with 49 unit/API tests, JSONL validation, evaluation validation, gold and hard metrics runs, Qdrant index build, API smoke, and FastAPI import smoke.
 
+## 2026-05-07 - Board-Readiness Continuation Foundation
+
+- Added evaluation review helpers for pending human labels, CSV export, and provisional seed chunk binding.
+- Added strict request validation, sanitized validation errors, security headers, and optional admin-token protection for admin/debug routes.
+- Added local audit-log analytics and surfaced them in the admin console without external telemetry.
+- Added optional Playwright browser smoke tooling and a GitHub Actions CI baseline.
+- Added Qdrant health, embedding benchmark, generated-mode benchmark, expanded load reporting, and board-readiness report CLIs.
+- Polished the public demo UI with scope indicators, answer-state labels, citation metadata, focus-visible styling, and mobile-aware layout constraints.
+- Added board-demo, publication, and readiness docs while preserving human-review and live-Qdrant blockers as explicit non-production gates.
+
 ## Historical Old-Demo Git State
 
 - `cee36fc Add files via upload`

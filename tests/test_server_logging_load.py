@@ -34,6 +34,7 @@ class ServerTests(unittest.TestCase):
         admin = client.get("/admin")
         mode_metrics = client.get("/metrics/modes")
         chat = client.post("/chat", json={"question": "What is the attendance requirement?"})
+        analytics = client.get("/analytics")
 
         self.assertEqual(health.status_code, 200)
         self.assertTrue(health.json()["ok"])
@@ -58,6 +59,61 @@ class ServerTests(unittest.TestCase):
         self.assertIn("citations", chat.json())
         self.assertNotIn("hits", chat.json())
         self.assertNotIn("timings", chat.json())
+        self.assertEqual(analytics.status_code, 200)
+        self.assertIn("events", analytics.json())
+
+    def test_security_headers_are_present(self) -> None:
+        client = TestClient(create_app())
+
+        response = client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("default-src 'self'", response.headers["content-security-policy"])
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(response.headers["x-frame-options"], "DENY")
+
+    def test_request_validation_is_sanitized_and_restrictive(self) -> None:
+        client = TestClient(create_app())
+
+        blank = client.post("/chat", json={"question": "   "})
+        long_question = client.post("/chat", json={"question": "x" * 2001})
+        invalid_mode = client.post("/ask", json={"question": "attendance", "mode": "fastest"})
+        script_like = client.post("/chat", json={"question": "<script>alert(1)</script>"})
+
+        self.assertEqual(blank.status_code, 422)
+        self.assertEqual(long_question.status_code, 422)
+        self.assertEqual(invalid_mode.status_code, 422)
+        self.assertNotIn("input", json.dumps(blank.json()))
+        self.assertNotIn("x" * 100, json.dumps(long_question.json()))
+        self.assertEqual(script_like.status_code, 200)
+        self.assertNotIn("Traceback", json.dumps(script_like.json()))
+
+    def test_admin_token_protects_debug_surfaces_but_not_public_chat(self) -> None:
+        with patch.dict("os.environ", {"EMU_ADVISOR_ADMIN_TOKEN": "secret"}, clear=False):
+            client = TestClient(create_app())
+
+        public_chat = client.post("/chat", json={"question": "What is the attendance requirement?"})
+        denied_ask = client.post("/ask", json={"question": "What is the attendance requirement?"})
+        allowed_ask = client.post(
+            "/ask",
+            headers={"Authorization": "Bearer secret"},
+            json={"question": "What is the attendance requirement?", "answer_style": "extractive"},
+        )
+        denied_metrics = client.get("/metrics")
+        allowed_metrics = client.get("/metrics", headers={"X-EMU-Admin-Token": "secret"})
+        allowed_admin = client.get("/admin?admin_token=secret")
+
+        self.assertEqual(public_chat.status_code, 200)
+        self.assertEqual(denied_ask.status_code, 401)
+        self.assertEqual(allowed_ask.status_code, 200)
+        self.assertEqual(denied_metrics.status_code, 401)
+        self.assertEqual(allowed_metrics.status_code, 200)
+        self.assertEqual(allowed_admin.status_code, 200)
+
+    def test_production_profile_requires_admin_token(self) -> None:
+        with patch.dict("os.environ", {"EMU_ADVISOR_PROFILE": "production", "EMU_ADVISOR_ADMIN_TOKEN": ""}, clear=False):
+            with self.assertRaises(RuntimeError):
+                create_app()
 
     def test_generated_answer_style_uses_extractive_fallback_when_model_unavailable(self) -> None:
         client = TestClient(create_app())
@@ -179,6 +235,9 @@ class LoadSimulationTests(unittest.TestCase):
         self.assertEqual(result.active_sessions, 50)
         self.assertEqual(result.completed, 50)
         self.assertEqual(result.extractive_fallbacks, 50)
+        self.assertEqual(result.errors, 0)
+        self.assertGreaterEqual(result.p95_latency_ms, result.p50_latency_ms)
+        self.assertEqual(result.as_dict()["error_rate"], 0)
 
 def _server_chunk(
     chunk_id: str,
