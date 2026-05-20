@@ -8,11 +8,11 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Mapping, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
@@ -25,7 +25,9 @@ from .answer import (
     scholarship_group_query,
 )
 from .audit_log import AuditEvent, AuditLogger, summarize_audit_log
-from .conversation_detection import expand_follow_up_query, is_casual_message
+from .conversation_detection import expand_follow_up_query, is_casual_message, is_follow_up
+from .citations import unique_citations
+from .text import tokenize
 from .conversation_store import get_store
 from .corpus import load_corpus, load_latest_metrics
 from .embeddings import create_embedding_model
@@ -38,6 +40,7 @@ from .routing import detect_query_language, route_query
 APP_DIR = Path(__file__).resolve().parent
 ROOT_DIR = APP_DIR.parent
 STATIC_DIR = ROOT_DIR / "static"
+USER_CHAT_RETRIEVAL_MODE = "balanced"
 
 
 class AskRequest(BaseModel):
@@ -134,8 +137,8 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
-        return _static_html("index.html")
+    def landing() -> str:
+        return _static_html("landing.html")
 
     @app.get("/admin", response_class=HTMLResponse)
     def admin_console() -> str:
@@ -199,6 +202,42 @@ def create_app() -> FastAPI:
     def chat_stream(request: ChatRequest) -> StreamingResponse:
         return _handle_chat_stream(request)
 
+    def _chat_retrieve_answer(
+        expanded_query: str,
+        *,
+        route: Any,
+        cross_corpus: bool,
+    ) -> tuple[Any, List[Mapping[str, Any]]]:
+        if route.in_scope and is_scholarship_bundle_query(expanded_query):
+            grouped_hits = {
+                group["key"]: retriever.retrieve(
+                    scholarship_group_query(group, expanded_query),
+                    mode=USER_CHAT_RETRIEVAL_MODE,
+                    route=route_query(
+                        scholarship_group_query(group, expanded_query),
+                        explicit_cross_corpus=cross_corpus,
+                    ),
+                    top_k=3,
+                )
+                for group in SCHOLARSHIP_EVIDENCE_GROUPS
+            }
+            hits = [hit for group_hits in grouped_hits.values() for hit in group_hits]
+            return build_topic_bundle_answer(expanded_query, grouped_hits), hits
+        hits = retriever.retrieve(expanded_query, mode=USER_CHAT_RETRIEVAL_MODE, route=route, top_k=8)
+        return build_extractive_answer(expanded_query, hits), hits
+
+    def _expand_chat_query(question: str, conversation_history: List[Mapping[str, str]]) -> str:
+        if not conversation_history or not is_follow_up(question):
+            return question
+        last_topic = ""
+        for msg in reversed(conversation_history):
+            if msg.get("role") == "user":
+                last_topic = msg.get("text", msg.get("content", ""))
+                break
+        if last_topic:
+            return expand_follow_up_query(question, last_topic)
+        return question
+
     def _handle_chat(request: ChatRequest, *, prefer_generated: bool = False) -> Dict[str, Any]:
         """Handle a chat request with session management, casual detection, and full pipeline."""
         # Get or create session
@@ -240,22 +279,7 @@ def create_app() -> FastAPI:
                 "evidence_groups": [],
             }
 
-        # Expand follow-up queries
-        if conversation_history and is_follow_up(request.question):
-            # Get last substantive exchange from history
-            last_topic = ""
-            for msg in reversed(conversation_history):
-                if msg.get("role") == "user":
-                    last_topic = msg.get("content", "")
-                    break
-            if last_topic:
-                expanded_query = expand_follow_up_query(request.question, last_topic)
-            else:
-                expanded_query = request.question
-        else:
-            expanded_query = request.question
-
-        # Route and retrieve
+        expanded_query = _expand_chat_query(request.question, conversation_history)
         route = route_query(expanded_query, explicit_cross_corpus=request.cross_corpus)
 
         if not route.in_scope:
@@ -271,10 +295,7 @@ def create_app() -> FastAPI:
                 "evidence_groups": [],
             }
 
-        hits = retriever.retrieve(expanded_query, mode="balanced", route=route, top_k=8)
-
-        # Build extractive answer (for citations and grounding)
-        extractive_answer = build_extractive_answer(expanded_query, hits)
+        extractive_answer, hits = _chat_retrieve_answer(expanded_query, route=route, cross_corpus=request.cross_corpus)
 
         # Generate LLM answer with conversation history
         generated_answer = None
@@ -324,19 +345,70 @@ def create_app() -> FastAPI:
             "latency_ms": total_ms,
         }
 
+    def _generate_suggestions(query: str, hits: List[Mapping[str, Any]]) -> List[str]:
+        """Generate context-aware follow-up suggestions based on the query and retrieved hits."""
+        suggestions = []
+        query_terms = set(tokenize(query))
+
+        # Extract key terms from retrieved evidence
+        evidence_terms = set()
+        for hit in hits[:5]:
+            chunk_text = str(hit.get("chunk_text", ""))
+            evidence_terms.update(tokenize(chunk_text))
+
+        # Common suggested questions based on EMU context
+        common_suggestions = [
+            "What are the eligibility requirements for this?",
+            "How do I apply for this benefit?",
+            "What documentation is needed?",
+            "Where can I find more information?",
+        ]
+
+        # Build context-specific suggestions
+        if "scholarship" in query_terms or "burs" in query_terms:
+            suggestions = [
+                "What types of scholarships are available?",
+                "How do I apply for a scholarship?",
+                "What are the deadlines for scholarship applications?",
+            ]
+        elif "attendance" in query_terms or "devam" in query_terms:
+            suggestions = [
+                "What is the maximum absence allowed?",
+                "How do I request an excused absence?",
+                "What happens if I exceed the absence limit?",
+            ]
+        elif "grade" in query_terms or "not" in query_terms or "notlandırma" in query_terms:
+            suggestions = [
+                "How are final grades calculated?",
+                "What is the grading scale?",
+                "How do I appeal a grade?",
+            ]
+        elif "exam" in query_terms or "sınav" in query_terms:
+            suggestions = [
+                "How are exams scheduled?",
+                "What items can I bring to exams?",
+                "What happens if I miss an exam?",
+            ]
+        else:
+            # Generic suggestions based on evidence
+            for suggestion in common_suggestions:
+                if len(suggestions) < 3:
+                    suggestions.append(suggestion)
+
+        return suggestions[:3]  # Return up to 3 suggestions
+
     def _handle_chat_stream(request: ChatRequest) -> StreamingResponse:
         """Handle streaming chat request with NDJSON output."""
-        import asyncio
-
         session_id = request.session_id
-        session = store.get_session(session_id)
-        if session is None:
+        if store.get_session(session_id) is None:
             session_id = store.create_session(session_id)
 
-        # Get conversation history
         conversation_history = store.get_history(session_id)
+        normalized_history = [
+            {"role": msg.get("role", "user"), "content": msg.get("text", msg.get("content", ""))}
+            for msg in conversation_history
+        ]
 
-        # Check for casual message
         is_casual, category, casual_response = is_casual_message(request.question)
         if is_casual:
             store.add_message(session_id, "user", request.question)
@@ -344,60 +416,92 @@ def create_app() -> FastAPI:
 
             def casual_events():
                 yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
-                yield json.dumps({"type": "casual", "category": category, "text": casual_response}, ensure_ascii=False) + "\n"
+                yield json.dumps(
+                    {"type": "casual", "category": category, "text": casual_response},
+                    ensure_ascii=False,
+                ) + "\n"
+                yield json.dumps({"type": "suggestions", "questions": []}, ensure_ascii=False) + "\n"
                 yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
 
             return StreamingResponse(casual_events(), media_type="application/x-ndjson")
 
-        # Expand follow-up
-        if conversation_history and is_follow_up(request.question):
-            last_topic = ""
-            for msg in reversed(conversation_history):
-                if msg.get("role") == "user":
-                    last_topic = msg.get("content", "")
-                    break
-            if last_topic:
-                expanded_query = expand_follow_up_query(request.question, last_topic)
-            else:
-                expanded_query = request.question
-        else:
-            expanded_query = request.question
-
+        expanded_query = _expand_chat_query(request.question, conversation_history)
         route = route_query(expanded_query, explicit_cross_corpus=request.cross_corpus)
 
         if not route.in_scope:
+            refusal = "I cannot answer questions outside the scope of EMU regulations."
             store.add_message(session_id, "user", request.question)
-            store.add_message(session_id, "assistant", "I cannot answer questions outside the scope of EMU regulations.")
+            store.add_message(session_id, "assistant", refusal)
 
             def out_of_scope_events():
                 yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
-                yield json.dumps({"type": "refusal", "text": "I cannot answer questions outside the scope of EMU regulations."}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "retrieving"}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "refusal", "text": refusal}, ensure_ascii=False) + "\n"
+                yield json.dumps({"type": "suggestions", "questions": []}, ensure_ascii=False) + "\n"
                 yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
 
             return StreamingResponse(out_of_scope_events(), media_type="application/x-ndjson")
 
-        hits = retriever.retrieve(expanded_query, mode="balanced", route=route, top_k=8)
-        extractive_answer = build_extractive_answer(expanded_query, hits)
-        citations = [citation.as_dict() for citation in extractive_answer.citations]
-
         def stream_events():
-            # Session event
             yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
-            # Citations event
-            yield json.dumps({"type": "citations", "citations": citations}, ensure_ascii=False) + "\n"
-            # Generated delta events
+            yield json.dumps({"type": "retrieving"}, ensure_ascii=False) + "\n"
+
+            extractive_answer, hits = _chat_retrieve_answer(
+                expanded_query,
+                route=route,
+                cross_corpus=request.cross_corpus,
+            )
+            citations = [citation.as_dict() for citation in extractive_answer.citations]
+            suggestions = _generate_suggestions(expanded_query, hits)
+            final_assistant_text = extractive_answer.text
+
+            yield json.dumps(
+                {
+                    "type": "extractive_answer",
+                    "text": extractive_answer.text,
+                    "mode": extractive_answer.mode,
+                    "citations": citations,
+                    "evidence_groups": extractive_answer.evidence_groups,
+                },
+                ensure_ascii=False,
+            ) + "\n"
+
             status = generator.status(timeout_s=llm_probe_timeout_s, smoke=False)
-            if status.get("model_available"):
-                generation_hits = extractive_answer.decision.supported_hits if extractive_answer.mode in {"answer", "answer_uncertain"} else []
-                if generation_hits:
-                    for delta in generator.stream(expanded_query, generation_hits, conversation_history):
+            generation_hits = (
+                extractive_answer.decision.supported_hits
+                if extractive_answer.mode in {"answer", "answer_uncertain"}
+                else []
+            )
+
+            if status.get("model_available") and generation_hits:
+                yield json.dumps({"type": "generating"}, ensure_ascii=False) + "\n"
+                generated_parts: List[str] = []
+                try:
+                    for delta in generator.stream(expanded_query, generation_hits, normalized_history):
+                        if delta.get("type") == "generated_delta" and delta.get("text"):
+                            generated_parts.append(delta["text"])
                         yield json.dumps(delta, ensure_ascii=False) + "\n"
-                else:
-                    yield json.dumps({"type": "generated_delta", "text": extractive_answer.text}, ensure_ascii=False) + "\n"
-                    yield json.dumps({"type": "generation_done", "model": generator.model, "latency_ms": 0}, ensure_ascii=False) + "\n"
+                except Exception:
+                    pass
+                if generated_parts:
+                    final_assistant_text = "".join(generated_parts)
             else:
                 yield json.dumps({"type": "generated_delta", "text": extractive_answer.text}, ensure_ascii=False) + "\n"
-                yield json.dumps({"type": "generation_done", "model": generator.model, "latency_ms": 0, "error": "OLLAMA_UNAVAILABLE"}, ensure_ascii=False) + "\n"
+                yield json.dumps(
+                    {
+                        "type": "generated_done",
+                        "model": generator.model,
+                        "latency_ms": 0,
+                        "error": None if status.get("model_available") else "OLLAMA_UNAVAILABLE",
+                    },
+                    ensure_ascii=False,
+                ) + "\n"
+
+            yield json.dumps({"type": "suggestions", "questions": suggestions}, ensure_ascii=False) + "\n"
+            yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
+
+            store.add_message(session_id, "user", request.question)
+            store.add_message(session_id, "assistant", final_assistant_text)
 
         return StreamingResponse(stream_events(), media_type="application/x-ndjson")
 
@@ -533,6 +637,55 @@ def create_app() -> FastAPI:
                 yield json.dumps(event, ensure_ascii=False) + "\n"
 
         return StreamingResponse(events(), media_type="application/x-ndjson")
+
+    @app.get("/chat/sessions")
+    def list_chat_sessions() -> List[Dict[str, Any]]:
+        """List all active chat sessions with metadata."""
+        sessions = store.list_sessions()
+        return [
+            {
+                "session_id": s.session_id,
+                "created_at": s.created_at,
+                "last_active": s.last_active,
+                "message_count": s.message_count,
+                "last_user_message": s.last_user_message,
+            }
+            for s in sessions
+        ]
+
+    class ExportRequest(BaseModel):
+        session_id: str
+        format: str = "markdown"  # "markdown" or "html"
+
+        @field_validator("format")
+        @classmethod
+        def validate_format(cls, value: str) -> str:
+            value = value.lower().strip()
+            if value not in ("markdown", "html"):
+                raise ValueError("format must be 'markdown' or 'html'")
+            return value
+
+    @app.post("/chat/export")
+    def export_chat_session(request: ExportRequest) -> JSONResponse:
+        """Export a chat session to Markdown or HTML format."""
+        export = store.export_session(request.session_id, request.format)
+        if export is None:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Session '{request.session_id}' not found"},
+            )
+
+        content_type = "text/markdown" if request.format == "markdown" else "text/html"
+        return Response(content=export, media_type=content_type)
+
+    @app.post("/chat/clear")
+    def clear_chat_session(request: ChatRequest) -> Dict[str, Any]:
+        """Clear messages from a chat session."""
+        success = store.clear_session(request.session_id)
+        if not success:
+            # Try to create if doesn't exist (for IDempotency)
+            store.create_session(request.session_id)
+        return {"session_id": request.session_id, "cleared": True, "message_count": 0}
 
     return app
 

@@ -82,9 +82,11 @@ python -m emu_advisor.benchmark generation --cases eval_sets\v1_gold.jsonl --chu
 python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000` for the simple deployed-style chatbot.
+Open `http://127.0.0.1:8000` for the landing page, then **Open regulation assistant** to reach the chat UI.
 
-Open `http://127.0.0.1:8000/admin` for the local diagnostics/admin console.
+Open `http://127.0.0.1:8000/admin?view=user` for the staff-facing chat (User mode).
+
+Open `http://127.0.0.1:8000/admin?view=diagnostics` for the local diagnostics console (metrics, `/ask`, raw hits).
 
 If `EMU_ADVISOR_ADMIN_TOKEN` is set, debug/admin endpoints require `Authorization: Bearer <token>` or `X-EMU-Admin-Token: <token>`. The browser admin console can be opened once with `http://127.0.0.1:8000/admin?admin_token=<token>`; the token is kept in browser session storage for same-session admin calls.
 

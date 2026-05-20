@@ -25,6 +25,8 @@ Invalid tool parameters
 Plan saved to: ~\.claude\plans\cosmic-finding-mitten.md · /plan to edit
 Chat Context Memory & Conversational Chatbot Implementation Plan
 
+> **Superseded (2026-05-20):** Public chat at `/` was removed. User-mode chat lives at `/admin?view=user`. Streaming fix is in `emu_advisor/server.py` `_handle_chat_stream`.
+
 Context
 
 The current /chat endpoint only does extractive retrieval — casual messages like "Hi" get refused ("I could not find reliable support…"), and there's no conversation memory for follow-up questions. The user wants a proper chatbot experience: multi-turn memory, friendly responses to casual messages, LLM-generated answers (via local Ollama) with citations as the default, and streaming for better UX. Balanced mode should be used throughout.

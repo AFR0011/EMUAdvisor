@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EMU Regulation Assistant</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body class="landing-view">
+    <main class="landing-shell">
+      <p class="eyebrow">Eastern Mediterranean University</p>
+      <h1>EMU Regulation Assistant</h1>
+      <p class="landing-lead">
+        A local demo that answers staff questions about official EMU rules and regulations using cited
+        evidence from <code>mevzuat.emu.edu.tr</code> and linked official PDFs.
+      </p>
+      <ul class="landing-points">
+        <li>English and Turkish corpora stay separate unless you explicitly compare them.</li>
+        <li>Answers include citations and refuse when evidence is insufficient.</li>
+        <li>Informational only — not an official final university decision.</li>
+      </ul>
+      <a class="landing-cta" href="/admin?view=user">Open regulation assistant</a>
+      <p class="landing-note">
+        For diagnostics, metrics, and retrieval debugging, open the assistant and switch to the
+        <strong>Diagnostics</strong> tab. If your deployment uses an admin token, append
+        <code>?admin_token=...</code> once to the URL.
+      </p>
+    </main>
+    <script src="/static/shared.js"></script>
+  </body>
+</html>

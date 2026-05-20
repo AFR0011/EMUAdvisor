@@ -3,75 +3,155 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EMU Regulation Assistant Admin</title>
+    <title>EMU Regulation Assistant</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
-  <body class="admin-view">
+  <body class="admin-view mode-user">
     <main class="admin-shell">
       <header class="admin-header">
-        <div>
-          <p class="eyebrow">Admin console</p>
+        <div class="header-brand">
+          <p class="eyebrow">EMU regulation assistant</p>
           <h1>EMU Regulation Assistant</h1>
+          <p class="header-copy">Staff-facing answers from official indexed regulation sources.</p>
         </div>
-        <a class="admin-link" href="/">Public demo</a>
+        <div class="header-actions" aria-label="Header actions">
+          <nav class="view-tabs" aria-label="Application mode">
+            <button type="button" class="view-tab is-active" data-view-tab="user" aria-selected="true">User</button>
+            <button type="button" class="view-tab" data-view-tab="diagnostics" aria-selected="false">Diagnostics</button>
+          </nav>
+          <button id="theme-toggle" class="theme-toggle" type="button" aria-pressed="false">
+            <span class="theme-toggle-control" aria-hidden="true"></span>
+            <span class="theme-toggle-text">Dark mode</span>
+          </button>
+          <a class="admin-link" href="/">Home</a>
+        </div>
       </header>
 
-      <section class="panel" aria-label="Ask a regulation question">
-        <label for="question">Question</label>
-        <textarea id="question" rows="4">What is the attendance requirement?</textarea>
-        <div class="controls">
-          <select id="mode" aria-label="Operating mode">
-            <option value="cheap">Cheap</option>
-            <option value="balanced" selected>Balanced</option>
-            <option value="expensive">Expensive</option>
-          </select>
-          <select id="answer-style" aria-label="Answer style">
-            <option value="both" selected>Extractive + LLM</option>
-            <option value="extractive">Extractive only</option>
-            <option value="generated">LLM answer</option>
-          </select>
-          <label class="check"><input id="cross" type="checkbox" /> Cross-corpus</label>
-          <button id="ask" type="button">Ask</button>
+      <section id="user-panel" class="user-panel" aria-label="Regulation chat">
+        <div class="scope-strip" aria-label="Demo scope">
+          <span>English and Turkish corpora stay separate by default</span>
+          <span>Official mevzuat sources only</span>
+          <span>Informational, not a final decision</span>
         </div>
+
+        <div class="user-toolbar">
+          <button id="history-btn" type="button" title="View session history">History</button>
+          <button id="export-btn" type="button" title="Export chat">Export</button>
+          <select id="export-format" aria-label="Export format">
+            <option value="markdown">Markdown</option>
+            <option value="html">HTML</option>
+          </select>
+          <button id="new-session-btn" type="button">New session</button>
+          <button id="advanced-toggle" type="button" aria-expanded="false" aria-controls="advanced-panel">Advanced</button>
+        </div>
+
+        <div id="advanced-panel" class="advanced-panel" hidden>
+          <label for="session-id">Session ID</label>
+          <input type="text" id="session-id" value="user-ui" readonly />
+        </div>
+
+        <section class="chat-card">
+          <div id="messages" class="messages" aria-live="polite">
+            <article class="message assistant">
+              <div class="answer-body">
+                <p class="answer-text">
+                  Hi! I can help you find information about Eastern Mediterranean University regulations.
+                  Ask about attendance, grading, scholarships, or other official rules.
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <form id="chat-form" class="composer" aria-describedby="composer-help">
+            <label class="sr-only" for="user-question">Question</label>
+            <textarea
+              id="user-question"
+              rows="3"
+              placeholder="Ask about an EMU regulation..."
+            >What is the attendance requirement?</textarea>
+            <div class="composer-actions">
+              <label class="check"
+                ><input id="user-cross" type="checkbox" /> Compare English and Turkish sources</label
+              >
+              <button id="user-send" type="submit">Send</button>
+            </div>
+            <p id="composer-help" class="composer-help">
+              Use cross-corpus comparison only when you want English and Turkish sources shown together.
+            </p>
+          </form>
+        </section>
+
+        <aside id="history-panel" class="history-panel" aria-label="Chat history" hidden>
+          <h2>Chat history</h2>
+          <ul id="history-list" class="history-list"></ul>
+          <button id="close-history-btn" type="button">Close</button>
+        </aside>
+
+        <p class="disclaimer">
+          This demo is informational only and does not provide a final official university decision.
+        </p>
       </section>
 
-      <section class="metrics" aria-label="Demo metrics">
-        <article><span id="corpus-count">-</span><small>chunks</small></article>
-        <article><span id="top5">-</span><small>top-5 retrieval</small></article>
-        <article><span id="reject">-</span><small>rejection accuracy</small></article>
-        <article><span id="latency">-</span><small>p50 extractive latency</small></article>
-        <article><span id="llm-status">-</span><small>local LLM</small></article>
-        <article><span id="audit-count">-</span><small>audit events</small></article>
-      </section>
+      <section id="diagnostics-panel" class="diagnostics-panel" aria-label="Diagnostics console" hidden>
+        <section class="panel diag-ask-panel">
+          <label for="diag-question">Question</label>
+          <textarea id="diag-question" rows="4">What is the attendance requirement?</textarea>
+          <div class="controls">
+            <select id="diag-mode" aria-label="Operating mode">
+              <option value="cheap">Cheap</option>
+              <option value="balanced" selected>Balanced</option>
+              <option value="expensive">Expensive</option>
+            </select>
+            <select id="diag-answer-style" aria-label="Answer style">
+              <option value="both" selected>Extractive + LLM</option>
+              <option value="extractive">Extractive only</option>
+              <option value="generated">LLM answer</option>
+            </select>
+            <label class="check"><input id="diag-cross" type="checkbox" /> Cross-corpus</label>
+            <button id="diag-ask" type="button">Ask</button>
+          </div>
+        </section>
 
-      <section class="admin-grid">
-        <article class="panel">
-          <h2>Corpus and Runtime</h2>
-          <dl id="corpus-details" class="detail-list"></dl>
-        </article>
-        <article class="panel">
-          <h2>Mode Presets</h2>
-          <div id="mode-details" class="mode-list"></div>
-        </article>
-      </section>
+        <section class="metrics" aria-label="Demo metrics">
+          <article><span id="corpus-count">-</span><small>chunks</small></article>
+          <article><span id="top5">-</span><small>top-5 retrieval</small></article>
+          <article><span id="reject">-</span><small>rejection accuracy</small></article>
+          <article><span id="latency">-</span><small>p50 extractive latency</small></article>
+          <article><span id="llm-status">-</span><small>local LLM</small></article>
+          <article><span id="audit-count">-</span><small>audit events</small></article>
+        </section>
 
-      <section class="panel" aria-label="Local analytics">
-        <h2>Local Analytics</h2>
-        <dl id="analytics-details" class="detail-list"></dl>
-      </section>
+        <section class="admin-grid">
+          <article class="panel">
+            <h2>Corpus and runtime</h2>
+            <dl id="corpus-details" class="detail-list"></dl>
+          </article>
+          <article class="panel">
+            <h2>Mode presets</h2>
+            <div id="mode-details" class="mode-list"></div>
+          </article>
+        </section>
 
-      <section class="result" aria-live="polite">
-        <div id="status">Ready.</div>
-        <pre id="answer"></pre>
-        <div id="evidence-groups"></div>
-        <pre id="generated"></pre>
-        <div id="citations"></div>
-        <details id="diagnostics">
-          <summary>Diagnostics</summary>
-          <pre id="diagnostic-json"></pre>
-        </details>
+        <section class="panel">
+          <h2>Local analytics</h2>
+          <dl id="analytics-details" class="detail-list"></dl>
+        </section>
+
+        <section class="result" aria-live="polite">
+          <div id="status">Ready.</div>
+          <pre id="answer"></pre>
+          <div id="evidence-groups"></div>
+          <pre id="generated"></pre>
+          <div id="citations"></div>
+          <details id="diagnostics">
+            <summary>Diagnostics</summary>
+            <pre id="diagnostic-json"></pre>
+          </details>
+        </section>
       </section>
     </main>
-    <script src="/static/admin.js"></script>
+    <script src="/static/shared.js"></script>
+    <script src="/static/user-chat.js"></script>
+    <script src="/static/admin-diagnostics.js"></script>
   </body>
 </html>

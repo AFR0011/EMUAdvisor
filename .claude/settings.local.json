@@ -3,7 +3,21 @@
     "allow": [
       "Bash(.venv\\\\Scripts\\\\python.exe -m unittest discover -s tests)",
       "Bash(python -m unittest discover -s tests)",
-      "Bash(python -c \"from emu_advisor.server import create_app; app = create_app\\(\\); print\\('Server loaded successfully'\\)\")"
+      "Bash(python -c \"from emu_advisor.server import create_app; app = create_app\\(\\); print\\('Server loaded successfully'\\)\")",
+      "Bash(python -m venv .venv)",
+      "Bash(.\\\\.venv\\\\Scripts\\\\Activate.ps1)",
+      "Bash(pip install *)",
+      "PowerShell(pip install *)",
+      "PowerShell(python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000)",
+      "Bash(curl *)",
+      "Bash(python -c \"from emu_advisor.conversation_store import ConversationStore; store = ConversationStore\\(\\); print\\('Conversation store OK'\\); sessions = store.list_sessions\\(\\); print\\(f'Sessions: {sessions}'\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python -m py_compile emu_advisor/conversation_store.py)",
+      "Bash(python -m py_compile emu_advisor/server.py)",
+      "Bash(node --check static/app.js)",
+      "Bash(python -m unittest discover -s tests -p \"test_*.py\" -v)",
+      "Bash(python -m unittest discover -s tests -p \"test_*.py\")",
+      "Bash(python -c \"from emu_advisor.server import create_app; app = create_app\\(\\); print\\('Server OK'\\)\")"
     ]
   }
 }

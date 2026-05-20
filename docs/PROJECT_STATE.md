@@ -1,6 +1,6 @@
 # Project State
 
-Last updated: 2026-05-07
+Last updated: 2026-05-20
 
 ## Current Snapshot
 
@@ -50,7 +50,9 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - `emu_advisor/embeddings.py`, `store.py`, `retrieval.py`, `modes.py`, and `index.py` provide local retrieval infrastructure plus a Qdrant adapter/build CLI with local fallback.
 - `emu_advisor/answer.py` and `citations.py` implement deterministic answerability, refusal, conflict, table answers, scholarship topic bundles, fallback, and citation behavior.
 - `emu_advisor/admin.py` provides snapshot/diff/activation workflow.
-- `emu_advisor/server.py`, `static/`, `audit_log.py`, and `load_test.py` provide the simple public chatbot at `/`, admin diagnostics at `/admin`, sanitized `/chat`, full `/ask`, LLM status diagnostics, privacy logging, and load simulation.
+- `emu_advisor/server.py`, `static/`, `audit_log.py`, and `load_test.py` provide a landing page at `/`, unified UI at `/admin` (User chat + Diagnostics tabs), sanitized `/chat` and `/chat/stream`, full `/ask`, LLM status diagnostics, privacy logging, and load simulation.
+- `static/landing.html`, `static/admin.html`, `static/shared.js`, `static/user-chat.js`, and `static/admin-diagnostics.js` replace the former split `index.html` / `app.js` public chat surface.
+- The unified UI now has persistent light/dark theme tokens, a header theme toggle, high-contrast toolbar controls, and a bounded streaming message pane; user-mode chat retrieval is internally pinned to balanced mode.
 - `emu_advisor/eval_review.py` exports human-review CSVs and can bind provisional seed cases against a built corpus artifact.
 - `emu_advisor/benchmark.py` runs local embedding and generated-mode probes without promoting generated mode by default.
 - `emu_advisor/readiness.py` generates `docs/BOARD_DEMO_READINESS.md` with explicit pass, partial, and blocked gates.
@@ -64,7 +66,7 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - Legacy `.old/` Python syntax scan passed for 15 files.
 - Legacy `.old/backend` import smoke failed because `.old/backend/rag_adapter.py` imports `key` from `anyio`, which is not available in the installed AnyIO package.
 - Root schema unit tests passed: `python -m unittest discover -s tests`.
-- Full root test suite passed: 58 tests after the board-readiness foundation pass.
+- Full root test suite passed: 62 tests after unified admin UI, `/chat/stream` repair, and balanced-mode user-chat regression coverage.
 - Canonical valid chunk fixture passed JSONL validation.
 - Canonical invalid chunk fixture failed validation as expected with field-level errors.
 - Root package/test/tool syntax scan passed for 35 files.
@@ -94,6 +96,7 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - Generated mode depends on an available local Ollama `qwen3:8b`; the current bounded smoke run timed out at 2 seconds, so extractive fallback remains the validated continuity path.
 - Admin/debug endpoints are protected only when `EMU_ADVISOR_ADMIN_TOKEN` is configured; production profile now requires that token at startup.
 - Optional Playwright browser smoke depends on local browser availability and is skip-safe when dependencies are unavailable.
+- Latest UI smoke passed for `/admin?view=user` light and dark themes across desktop and mobile, including toolbar contrast, bounded streaming transcript behavior, and no post-streaming page jump.
 - Broad scholarship prompts use deterministic grouped subqueries; p50 remains under 1 second, but p95 is higher than direct extractive questions.
 - The 60-case evaluation set and 50-case hard regression set are assistant-curated pending human review; do not label either as human-reviewed.
 - The 50-case provisional gold seed is converted from the comprehensive analysis document, but several cases still need exact source/chunk binding and human adjudication before the scores can be presented as gold-standard results.

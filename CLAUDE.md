@@ -22,8 +22,9 @@ pip install -r requirements-dev.txt
 python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
 ```
 
-- UI: `http://127.0.0.1:8000`
-- Admin: `http://127.0.0.1:8000/admin`
+- Landing: `http://127.0.0.1:8000`
+- Assistant (User mode): `http://127.0.0.1:8000/admin?view=user`
+- Diagnostics: `http://127.0.0.1:8000/admin?view=diagnostics`
 - Sanitized API: `POST /chat`
 - Full diagnostic API: `POST /ask` (supports `answer_style=extractive|generated|both`)
 

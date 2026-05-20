@@ -18,7 +18,7 @@ The local board demo is presentable with named gaps that must not be described a
 | human-reviewed gold status | `blocked` | 160 cases still pending review |
 | production admin token | `partial` | not set for this local check |
 | live Qdrant service | `blocked` | service-backed Qdrant not documented in environment |
-| local analytics log | `pass` | 133 audit events |
+| local analytics log | `pass` | 193 audit events |
 
 ## Non-Negotiable Limits
 

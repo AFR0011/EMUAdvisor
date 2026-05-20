@@ -29,7 +29,7 @@ Expected demo behavior:
 
 - Answer from indexed regulation evidence.
 - Show source language and bottom citations.
-- Keep `/chat` output public-safe without raw hit diagnostics.
+- Keep `/chat` output public-safe without raw hit diagnostics (User mode at `/admin?view=user`).
 
 ## Slide 5 - Edge Cases
 

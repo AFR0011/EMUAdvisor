@@ -60,11 +60,12 @@ EMUAdvisor/
     v1_hard.jsonl
   artifacts/              # ignored generated crawl, corpus, metrics, and review outputs
   static/
+    landing.html
     admin.html
-    admin.js
-    index.html
+    shared.js
+    user-chat.js
+    admin-diagnostics.js
     style.css
-    app.js
   tests/
     fixtures/
       canonical_chunks.valid.jsonl
@@ -135,7 +136,7 @@ EMUAdvisor/
 - `emu_advisor/generation.py`: local Ollama generated-answer adapter with extractive fallback.
 - `emu_advisor/retrieval.py`, `store.py`, `embeddings.py`, `modes.py`, and `index.py`: local/Qdrant retrieval stack and index build CLI.
 - `emu_advisor/answer.py` and `citations.py`: answerability, table answers, scholarship topic bundles, fallback, conflict, and citations.
-- `emu_advisor/server.py` and `static/`: FastAPI demo and UI; `/` is the simple chatbot, `/admin` is the diagnostic console, `/chat` is sanitized, `/ask` remains the full diagnostic endpoint, `/analytics` summarizes local audit logs, and admin/debug routes can be token-protected.
+- `emu_advisor/server.py` and `static/`: FastAPI demo and UI; `/` is a landing page, `/admin` hosts User chat and Diagnostics modes, `/chat` and `/chat/stream` are sanitized public chat APIs, `/ask` remains the full diagnostic endpoint, `/analytics` summarizes local audit logs, and admin/debug routes can be token-protected.
 - `emu_advisor/readiness.py`: board-demo readiness report generator.
 - `tools/browser_smoke.py`: optional Playwright desktop/mobile browser smoke.
 - `eval_sets/emu_gold_seed.jsonl`: 50-case provisional seed converted from `docs/gold-set-comprehensive-analysis.md`, pending exact source/chunk binding and human review.
@@ -248,5 +249,6 @@ Official EMU regulation HTML/PDF sources
 - Legacy evaluation: `EvaluateRetrieval.py` with a built index and query set.
 - Backend: `python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000` from the root repo.
 - Legacy backend: `python -m uvicorn backend.server:app --host 0.0.0.0 --port 8000` from `.old/`.
-- Simple UI: `http://127.0.0.1:8000` after backend startup.
-- Admin UI: `http://127.0.0.1:8000/admin` after backend startup.
+- Landing: `http://127.0.0.1:8000` after backend startup.
+- User chat: `http://127.0.0.1:8000/admin?view=user`.
+- Diagnostics: `http://127.0.0.1:8000/admin?view=diagnostics`.

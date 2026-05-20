@@ -51,7 +51,12 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(llm_status.status_code, 200)
         self.assertIn("model_available", llm_status.json())
         self.assertEqual(home.status_code, 200)
+        self.assertIn("Open regulation assistant", home.text)
+        self.assertNotIn('id="chat-form"', home.text)
         self.assertEqual(admin.status_code, 200)
+        self.assertIn('id="user-panel"', admin.text)
+        self.assertIn('id="diagnostics-panel"', admin.text)
+        self.assertIn('data-view-tab="user"', admin.text)
         self.assertEqual(mode_metrics.status_code, 200)
         self.assertIn("balanced", mode_metrics.json()["modes"])
         self.assertEqual(chat.status_code, 200)
@@ -143,6 +148,60 @@ class ServerTests(unittest.TestCase):
         lines = [json.loads(line) for line in response.text.splitlines() if line.strip()]
         self.assertEqual(lines[0]["type"], "extractive_answer")
         self.assertEqual(lines[-1]["type"], "done")
+
+    def test_chat_stream_returns_ndjson_session_and_answer(self) -> None:
+        client = TestClient(create_app())
+
+        response = client.post(
+            "/chat/stream",
+            json={"question": "What is the attendance requirement?", "session_id": "test-stream"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/x-ndjson", response.headers.get("content-type", ""))
+        lines = [json.loads(line) for line in response.text.splitlines() if line.strip()]
+        types = [line["type"] for line in lines]
+        self.assertEqual(types[0], "session")
+        self.assertIn("extractive_answer", types)
+        self.assertEqual(types[-1], "done")
+
+    def test_user_chat_retrieval_uses_balanced_mode(self) -> None:
+        observed_modes: list[str] = []
+        original_retrieve = HybridRetriever.retrieve
+
+        def capture_retrieve(self, query, *args, **kwargs):
+            observed_modes.append(kwargs.get("mode"))
+            return original_retrieve(self, query, *args, **kwargs)
+
+        with patch.object(HybridRetriever, "retrieve", new=capture_retrieve), patch(
+            "emu_advisor.generation.OllamaGenerator.status",
+            return_value={"model_available": False, "smoke_ok": False, "error": "missing model", "latency_ms": 1},
+        ):
+            client = TestClient(create_app())
+            chat = client.post("/chat", json={"question": "What is the attendance requirement?"})
+            stream = client.post(
+                "/chat/stream",
+                json={"question": "What is the attendance requirement?", "session_id": "balanced-stream"},
+            )
+
+        self.assertEqual(chat.status_code, 200)
+        self.assertEqual(stream.status_code, 200)
+        self.assertGreaterEqual(len(observed_modes), 2)
+        self.assertEqual(set(observed_modes), {"balanced"})
+
+    def test_chat_sessions_list_does_not_error(self) -> None:
+        client = TestClient(create_app())
+        response = client.get("/chat/sessions")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)
+
+    def test_casual_chat_returns_friendly_response(self) -> None:
+        client = TestClient(create_app())
+        response = client.post("/chat", json={"question": "Hi"})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["state"], "casual")
+        self.assertNotIn("could not find reliable support", payload["answer"].lower())
 
     def test_broad_scholarship_prompt_returns_grouped_extractive_without_generation(self) -> None:
         chunks = [
