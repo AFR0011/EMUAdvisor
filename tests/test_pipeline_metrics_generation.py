@@ -305,22 +305,22 @@ def _write_metrics_fixture(root: Path) -> tuple[Path, Path]:
     records.extend(
         _case(
             f"EN-X{i}",
-            "Compare English and Turkish attendance rules; are the two rules conflicting?",
+            "Are the attendance evidence excerpts conflicting?",
             "en",
             "conflict",
-            expected_corpora=["regulations_en", "regulations_tr"],
-            chunks=[en_chunk, tr_chunk],
+            expected_corpora=["regulations_en"],
+            chunks=[en_chunk],
         )
         for i in range(1, 3)
     )
     records.extend(
         _case(
             f"TR-X{i}",
-            "İngilizce ve Türkçe devam kurallarını karşılaştır; iki kural çelişkili mi?",
+            "ogrenci devam celiskili mi?",
             "tr",
             "conflict",
-            expected_corpora=["regulations_en", "regulations_tr"],
-            chunks=[tr_chunk, en_chunk],
+            expected_corpora=["regulations_tr"],
+            chunks=[tr_chunk],
         )
         for i in range(1, 3)
     )

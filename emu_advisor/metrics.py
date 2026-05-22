@@ -23,7 +23,7 @@ from .evaluation import EvaluationCase, evaluate_hits, load_cases, validate_case
 from .generation import OllamaGenerator
 from .modes import MODE_PRESETS
 from .retrieval import HybridRetriever
-from .routing import asks_cross_corpus, route_query
+from .routing import route_query
 
 
 TARGETS = {
@@ -107,7 +107,7 @@ def run_evaluation(
 
     for case in cases:
         route_start = time.perf_counter()
-        route = route_query(case.question, explicit_cross_corpus=asks_cross_corpus(case.question))
+        route = route_query(case.question)
         route_ms = _elapsed_ms(route_start)
 
         retrieve_start = time.perf_counter()
@@ -118,7 +118,7 @@ def run_evaluation(
                 grouped_hits[group["key"]] = retriever.retrieve(
                     group_query,
                     mode=mode,
-                    route=route_query(group_query, explicit_cross_corpus=asks_cross_corpus(case.question)),
+                    route=route_query(group_query),
                     top_k=3,
                 )
             hits = _flatten_grouped_hits(grouped_hits)

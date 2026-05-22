@@ -102,6 +102,11 @@ Use this log for meaningful project milestones only.
 - Polished the public demo UI with scope indicators, answer-state labels, citation metadata, focus-visible styling, and mobile-aware layout constraints.
 - Added board-demo, publication, and readiness docs while preserving human-review and live-Qdrant blockers as explicit non-production gates.
 
+## 2026-05-22 - Language Routing And Chat Evidence Reveal
+
+- Removed the V1 EN/TR cross-corpus routing surface from routing, retrieval, metrics, API request models, and UI controls.
+- Updated user-mode streaming chat so citations and extractive evidence are emitted only after answer streaming completes and remain hidden behind a source reveal button by default.
+
 ## Historical Old-Demo Git State
 
 - `cee36fc Add files via upload`

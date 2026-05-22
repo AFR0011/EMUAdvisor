@@ -265,6 +265,11 @@ body.mode-diagnostics #diagnostics-panel {
   display: none;
 }
 
+.supporting-results.is-collapsed,
+.supporting-results[hidden] {
+  display: none;
+}
+
 .landing-view {
   min-height: 100vh;
   background: linear-gradient(160deg, var(--header-bg) 0%, var(--header-bg-2) 45%, var(--paper) 45%);
@@ -580,7 +585,7 @@ body.mode-diagnostics #diagnostics-panel {
 
 .composer-actions {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 14px;
   align-items: center;
   margin-top: 12px;
@@ -603,24 +608,53 @@ body.mode-diagnostics #diagnostics-panel {
 }
 
 .public-citations,
+.public-supporting-results,
 .mini-groups {
   margin-top: 14px;
 }
 
-.public-citations ol {
+.public-citations ol,
+.supporting-results ol {
   margin: 8px 0 0 20px;
   padding: 0;
 }
 
-.public-citations li {
+.public-citations li,
+.supporting-results li {
   margin-top: 6px;
 }
 
-.public-citations span {
+.public-citations span,
+.supporting-results span {
   display: block;
   margin-top: 2px;
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.supporting-results {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.supporting-results section + section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.supporting-results h3 {
+  margin: 0 0 8px;
+  color: var(--heading);
+  font-size: 0.92rem;
+}
+
+.extractive-result p {
+  margin: 0;
+  color: var(--ink);
 }
 
 .mini-group {
@@ -681,7 +715,7 @@ body.mode-diagnostics #diagnostics-panel {
 
 .controls {
   display: grid;
-  grid-template-columns: 1fr 1fr auto auto;
+  grid-template-columns: 1fr 1fr auto;
   gap: 12px;
   align-items: center;
   margin-top: 14px;
@@ -964,7 +998,8 @@ summary {
 }
 
 /* Toggle citations button */
-.toggle-citations {
+.toggle-citations,
+.toggle-supporting-results {
   display: inline-block;
   padding: 4px 10px;
   margin-top: 8px;
@@ -976,7 +1011,8 @@ summary {
   cursor: pointer;
 }
 
-.toggle-citations:hover {
+.toggle-citations:hover,
+.toggle-supporting-results:hover {
   border-color: var(--gold);
 }
 

@@ -56,7 +56,7 @@ Outputs:
 - A correct answer with the wrong citation is capped at partial credit.
 - A correct citation with an incomplete rule is capped at partial credit.
 - Unsupported thresholds, deadlines, exceptions, offices, or article paths are hallucinations.
-- English and Turkish corpora must not be silently mixed; cross-corpus evaluation must be explicit.
+- English and Turkish corpora must not be mixed in V1 evaluations.
 
 ## Current Boundary
 

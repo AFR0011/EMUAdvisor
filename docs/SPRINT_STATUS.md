@@ -1,6 +1,6 @@
 # Sprint Status
 
-Last updated: 2026-05-07
+Last updated: 2026-05-22
 
 This records implementation status for the 24-48 hour sprint plan. `Implemented` means local code paths and tests exist. The presentable-demo pass now also has a live official-corpus crawl, assistant-curated 60-case candidate metrics, and a 50-case hard regression set for table/broad-query failures.
 
@@ -10,7 +10,7 @@ This records implementation status for the 24-48 hour sprint plan. `Implemented`
 | 1 Canonical schema | Implemented | `emu_advisor/schema.py`, JSONL validator, fixtures, tests. |
 | 2 HTML ingestion | Implemented | `emu_advisor/html_ingest.py` emits canonical HTML chunks with traceability, table summaries, row chunks, and derived salary facts. |
 | 3 PDF ingestion | Implemented | `emu_advisor/pdf_ingest.py` extracts text/page metadata via local `pypdf`. |
-| 4 Language/scope routing | Implemented | `emu_advisor/routing.py` keeps EN/TR corpora separate by default. |
+| 4 Language/scope routing | Implemented | `emu_advisor/routing.py` keeps EN/TR corpora separate in V1. |
 | 5 Evaluation set v0 | Implemented | `eval_sets/v1_gold.jsonl` now contains 60 assistant-curated EN/TR cases pending human review. |
 | 6 Multilingual embedding replacement | Implemented baseline | `emu_advisor/embeddings.py` defaults to local multilingual hash baseline and supports optional Ollama `qwen3-embedding:4b`. |
 | 7 Qdrant foundation | Implemented + embedded validation | `emu_advisor/store.py` provides a Qdrant adapter and local fallback; `emu_advisor/index.py` built the 8,714-chunk embedded Qdrant index at `artifacts/qdrant/latest`. |
@@ -26,7 +26,7 @@ This records implementation status for the 24-48 hour sprint plan. `Implemented`
 | 17 Release candidate | Implemented demo | `docs/RELEASE_CANDIDATE.md` records live demo status, commands, measured metrics, and gaps. |
 | 18 Real-corpus demo metrics | Implemented | `emu_advisor/pipeline.py`, `emu_advisor/metrics.py`, ignored `artifacts/demo_corpus/latest`, and ignored `artifacts/metrics/latest`. |
 | 19 Evaluation-first hardening | Implemented candidate pass | 60-case candidate set, failure analysis, demo README/snapshot, LLM status checks, retrieval scoring hardening, Qdrant backend envs. |
-| 20 Structured evidence hardening | Implemented regression pass | Table-aware ingestion, derived salary facts, scholarship topic bundles, cross-corpus diversification, `eval_sets/v1_hard.jsonl`, and refreshed metrics. |
+| 20 Structured evidence hardening | Implemented regression pass | Table-aware ingestion, derived salary facts, scholarship topic bundles, language-separated routing, `eval_sets/v1_hard.jsonl`, and refreshed metrics. |
 | 21 Demo split and mode benchmark foundation | Implemented | `/` simple chatbot, `/admin` diagnostics console, sanitized `/chat`, `eval_sets/emu_gold_seed.jsonl`, `docs/eval_spec.md`, and `--all-modes` metrics comparison. |
 | 22 Evaluation review workflow | Implemented foundation | `emu_advisor/eval_review.py` summarizes pending review status, exports CSV review sheets, and binds provisional seed cases against a corpus artifact. |
 | 23 Functional QA expansion | Implemented foundation | Added server tests for validation, special-character handling, admin-token behavior, security headers, analytics, and load-report fields. |

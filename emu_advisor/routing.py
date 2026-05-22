@@ -32,7 +32,6 @@ OUT_OF_SCOPE_TERMS = (
 class RouteDecision:
     query_language: str
     corpora: List[str]
-    cross_corpus: bool
     in_scope: bool
     reason: str
 
@@ -64,51 +63,23 @@ def detect_query_language(query: str) -> str:
     return "en"
 
 
-def route_query(query: str, *, explicit_cross_corpus: bool = False) -> RouteDecision:
+def route_query(query: str) -> RouteDecision:
     lowered = normalize_text(query)
     if any(term in lowered for term in OUT_OF_SCOPE_TERMS):
         return RouteDecision(
             query_language=detect_query_language(query),
             corpora=[],
-            cross_corpus=False,
             in_scope=False,
             reason="query appears outside V1 regulations scope",
         )
 
     language = detect_query_language(query)
-    if explicit_cross_corpus or asks_cross_corpus(query):
-        corpora = ["regulations_tr", "regulations_en"] if language == "tr" else ["regulations_en", "regulations_tr"]
-        return RouteDecision(
-            query_language=language,
-            corpora=corpora,
-            cross_corpus=True,
-            in_scope=True,
-            reason="explicit cross-corpus search requested",
-        )
-
     corpus = "regulations_tr" if language == "tr" else "regulations_en"
     return RouteDecision(
         query_language=language,
         corpora=[corpus],
-        cross_corpus=False,
         in_scope=True,
         reason="matched query language corpus",
-    )
-
-
-def asks_cross_corpus(query: str) -> bool:
-    lowered = normalize_text(query)
-    return any(
-        marker in lowered
-        for marker in (
-            "compare",
-            "both english and turkish",
-            "english and turkish",
-            "turkish and english",
-            "karsilastir",
-            "ingilizce ve turkce",
-            "turkce ve ingilizce",
-        )
     )
 
 

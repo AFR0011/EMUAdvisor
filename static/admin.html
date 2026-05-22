@@ -29,7 +29,7 @@
 
       <section id="user-panel" class="user-panel" aria-label="Regulation chat">
         <div class="scope-strip" aria-label="Demo scope">
-          <span>English and Turkish corpora stay separate by default</span>
+          <span>English and Turkish corpora are routed separately</span>
           <span>Official mevzuat sources only</span>
           <span>Informational, not a final decision</span>
         </div>
@@ -70,14 +70,8 @@
               placeholder="Ask about an EMU regulation..."
             >What is the attendance requirement?</textarea>
             <div class="composer-actions">
-              <label class="check"
-                ><input id="user-cross" type="checkbox" /> Compare English and Turkish sources</label
-              >
               <button id="user-send" type="submit">Send</button>
             </div>
-            <p id="composer-help" class="composer-help">
-              Use cross-corpus comparison only when you want English and Turkish sources shown together.
-            </p>
           </form>
         </section>
 
@@ -107,7 +101,6 @@
               <option value="extractive">Extractive only</option>
               <option value="generated">LLM answer</option>
             </select>
-            <label class="check"><input id="diag-cross" type="checkbox" /> Cross-corpus</label>
             <button id="diag-ask" type="button">Ask</button>
           </div>
         </section>

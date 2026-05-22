@@ -1,12 +1,12 @@
 # Project Status, Progress, and Plan
 
-Last updated: 2026-05-06
+Last updated: 2026-05-22
 
 ## Executive Summary
 
 EMUAdvisor is now a presentable local-only demo for answering staff-facing questions about official EMU regulations. The root repository is the active implementation surface, while `.old/` is retained only as an ignored legacy reference.
 
-The current system can crawl the official regulation source scope, build canonical chunks, retrieve across separate English and Turkish corpora, answer with citations, refuse out-of-scope questions, show conflicts, handle table-derived salary facts, and return grouped extractive answers for broad scholarship questions.
+The current system can crawl the official regulation source scope, build canonical chunks, route English and Turkish questions to separate corpora, answer with citations, refuse out-of-scope questions, show conflicts, handle table-derived salary facts, and return grouped extractive answers for broad scholarship questions.
 
 This is not production-ready and must not be described as an official EMU decision system. The strongest current claim is: a local demo has been validated against assistant-curated candidate and hard-regression evaluation sets.
 
@@ -14,7 +14,7 @@ This is not production-ready and must not be described as an official EMU decisi
 
 V1 is scoped to official EMU regulations from `mevzuat.emu.edu.tr` plus official linked PDFs that belong to that regulation source set.
 
-V1 supports English and Turkish, but the corpora remain separate by default because the sources are not guaranteed to be one-to-one translations. Cross-corpus answers are only used when the user explicitly asks for comparison or conflict handling.
+V1 supports English and Turkish, but the corpora remain separate because the sources are not guaranteed to be one-to-one translations. V1 no longer exposes EN/TR cross-corpus answers or comparison.
 
 V1 does not cover events, advising, course/program information, private records, workflow automation, email, scheduling, or general university chatbot behavior.
 
@@ -26,7 +26,7 @@ V1 does not cover events, advising, course/program information, private records,
 - Table-aware HTML ingestion now emits table summaries, row-level table chunks, and derived salary facts.
 - Live crawl/index pipeline exists at `python -m emu_advisor.pipeline build ...`.
 - Corpus loading prefers `artifacts/demo_corpus/latest/chunks.jsonl` and falls back to fixture data only when no live corpus exists.
-- English/Turkish routing, out-of-scope routing, and explicit cross-corpus routing are implemented.
+- English/Turkish routing and out-of-scope routing are implemented without EN/TR corpus mixing.
 - Hybrid lexical+dense retrieval is implemented with local hash embeddings and optional Ollama embeddings.
 - Qdrant backend support is implemented with local fallback and an index build CLI.
 - Deterministic answerability gates handle answer, refusal, clarification, and conflict modes before generation.
@@ -119,7 +119,7 @@ Core implementation areas:
 
 - `emu_advisor/html_ingest.py`: HTML/text/table/derived-fact ingestion.
 - `emu_advisor/pdf_ingest.py`: PDF text extraction with page metadata.
-- `emu_advisor/retrieval.py`: hybrid retrieval, structured-evidence boosts, source quality demotion, cross-corpus diversification.
+- `emu_advisor/retrieval.py`: hybrid retrieval, structured-evidence boosts, source quality demotion.
 - `emu_advisor/answer.py`: evidence gating, table answers, scholarship topic bundles, conflict/refusal/clarification.
 - `emu_advisor/store.py` and `emu_advisor/index.py`: local store plus Qdrant adapter and build CLI.
 - `emu_advisor/server.py`: FastAPI app, demo UI endpoints, corpus/metrics/LLM status, ask endpoints.

@@ -83,11 +83,13 @@ class ServerTests(unittest.TestCase):
         blank = client.post("/chat", json={"question": "   "})
         long_question = client.post("/chat", json={"question": "x" * 2001})
         invalid_mode = client.post("/ask", json={"question": "attendance", "mode": "fastest"})
+        stale_cross_corpus = client.post("/chat", json={"question": "attendance", "cross_corpus": True})
         script_like = client.post("/chat", json={"question": "<script>alert(1)</script>"})
 
         self.assertEqual(blank.status_code, 422)
         self.assertEqual(long_question.status_code, 422)
         self.assertEqual(invalid_mode.status_code, 422)
+        self.assertEqual(stale_cross_corpus.status_code, 422)
         self.assertNotIn("input", json.dumps(blank.json()))
         self.assertNotIn("x" * 100, json.dumps(long_question.json()))
         self.assertEqual(script_like.status_code, 200)
@@ -152,10 +154,14 @@ class ServerTests(unittest.TestCase):
     def test_chat_stream_returns_ndjson_session_and_answer(self) -> None:
         client = TestClient(create_app())
 
-        response = client.post(
-            "/chat/stream",
-            json={"question": "What is the attendance requirement?", "session_id": "test-stream"},
-        )
+        with patch(
+            "emu_advisor.generation.OllamaGenerator.status",
+            return_value={"model_available": False, "smoke_ok": False, "error": "missing model", "latency_ms": 1},
+        ):
+            response = client.post(
+                "/chat/stream",
+                json={"question": "What is the attendance requirement?", "session_id": "test-stream"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("application/x-ndjson", response.headers.get("content-type", ""))
@@ -163,6 +169,7 @@ class ServerTests(unittest.TestCase):
         types = [line["type"] for line in lines]
         self.assertEqual(types[0], "session")
         self.assertIn("extractive_answer", types)
+        self.assertLess(types.index("generated_delta"), types.index("extractive_answer"))
         self.assertEqual(types[-1], "done")
 
     def test_user_chat_retrieval_uses_balanced_mode(self) -> None:

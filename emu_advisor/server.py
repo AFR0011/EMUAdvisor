@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from .answer import (
     SCHOLARSHIP_EVIDENCE_GROUPS,
@@ -44,10 +44,11 @@ USER_CHAT_RETRIEVAL_MODE = "balanced"
 
 
 class AskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     question: str
     mode: str = "balanced"
     session_id: Optional[str] = None
-    cross_corpus: bool = False
     answer_style: Literal["extractive", "generated", "both"] = "both"
 
     @field_validator("question")
@@ -67,9 +68,10 @@ class AskRequest(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     question: str
     session_id: Optional[str] = None
-    cross_corpus: bool = False
 
     @field_validator("question")
     @classmethod
@@ -206,17 +208,13 @@ def create_app() -> FastAPI:
         expanded_query: str,
         *,
         route: Any,
-        cross_corpus: bool,
     ) -> tuple[Any, List[Mapping[str, Any]]]:
         if route.in_scope and is_scholarship_bundle_query(expanded_query):
             grouped_hits = {
                 group["key"]: retriever.retrieve(
                     scholarship_group_query(group, expanded_query),
                     mode=USER_CHAT_RETRIEVAL_MODE,
-                    route=route_query(
-                        scholarship_group_query(group, expanded_query),
-                        explicit_cross_corpus=cross_corpus,
-                    ),
+                    route=route_query(scholarship_group_query(group, expanded_query)),
                     top_k=3,
                 )
                 for group in SCHOLARSHIP_EVIDENCE_GROUPS
@@ -280,7 +278,7 @@ def create_app() -> FastAPI:
             }
 
         expanded_query = _expand_chat_query(request.question, conversation_history)
-        route = route_query(expanded_query, explicit_cross_corpus=request.cross_corpus)
+        route = route_query(expanded_query)
 
         if not route.in_scope:
             store.add_message(session_id, "user", request.question)
@@ -295,7 +293,7 @@ def create_app() -> FastAPI:
                 "evidence_groups": [],
             }
 
-        extractive_answer, hits = _chat_retrieve_answer(expanded_query, route=route, cross_corpus=request.cross_corpus)
+        extractive_answer, hits = _chat_retrieve_answer(expanded_query, route=route)
 
         # Generate LLM answer with conversation history
         generated_answer = None
@@ -426,7 +424,7 @@ def create_app() -> FastAPI:
             return StreamingResponse(casual_events(), media_type="application/x-ndjson")
 
         expanded_query = _expand_chat_query(request.question, conversation_history)
-        route = route_query(expanded_query, explicit_cross_corpus=request.cross_corpus)
+        route = route_query(expanded_query)
 
         if not route.in_scope:
             refusal = "I cannot answer questions outside the scope of EMU regulations."
@@ -449,22 +447,10 @@ def create_app() -> FastAPI:
             extractive_answer, hits = _chat_retrieve_answer(
                 expanded_query,
                 route=route,
-                cross_corpus=request.cross_corpus,
             )
             citations = [citation.as_dict() for citation in extractive_answer.citations]
             suggestions = _generate_suggestions(expanded_query, hits)
             final_assistant_text = extractive_answer.text
-
-            yield json.dumps(
-                {
-                    "type": "extractive_answer",
-                    "text": extractive_answer.text,
-                    "mode": extractive_answer.mode,
-                    "citations": citations,
-                    "evidence_groups": extractive_answer.evidence_groups,
-                },
-                ensure_ascii=False,
-            ) + "\n"
 
             status = generator.status(timeout_s=llm_probe_timeout_s, smoke=False)
             generation_hits = (
@@ -497,6 +483,18 @@ def create_app() -> FastAPI:
                     ensure_ascii=False,
                 ) + "\n"
 
+            yield json.dumps(
+                {
+                    "type": "extractive_answer",
+                    "text": extractive_answer.text,
+                    "mode": extractive_answer.mode,
+                    "answer_type": extractive_answer.answer_type,
+                    "language": route.query_language,
+                    "citations": citations,
+                    "evidence_groups": extractive_answer.evidence_groups,
+                },
+                ensure_ascii=False,
+            ) + "\n"
             yield json.dumps({"type": "suggestions", "questions": suggestions}, ensure_ascii=False) + "\n"
             yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
 
@@ -508,7 +506,7 @@ def create_app() -> FastAPI:
     def _answer_request(request: AskRequest, *, event_type: str = "ask") -> Dict[str, Any]:
         total_started = time.perf_counter()
         route_started = time.perf_counter()
-        route = route_query(request.question, explicit_cross_corpus=request.cross_corpus)
+        route = route_query(request.question)
         route_ms = _elapsed_ms(route_started)
         retrieve_started = time.perf_counter()
         if route.in_scope and is_scholarship_bundle_query(request.question):
@@ -516,10 +514,7 @@ def create_app() -> FastAPI:
                 group["key"]: retriever.retrieve(
                     scholarship_group_query(group, request.question),
                     mode=request.mode,
-                    route=route_query(
-                        scholarship_group_query(group, request.question),
-                        explicit_cross_corpus=request.cross_corpus,
-                    ),
+                    route=route_query(scholarship_group_query(group, request.question)),
                     top_k=3,
                 )
                 for group in SCHOLARSHIP_EVIDENCE_GROUPS
@@ -598,16 +593,13 @@ def create_app() -> FastAPI:
 
     @app.post("/ask/stream")
     def ask_stream(request: AskRequest) -> StreamingResponse:
-        route = route_query(request.question, explicit_cross_corpus=request.cross_corpus)
+        route = route_query(request.question)
         if route.in_scope and is_scholarship_bundle_query(request.question):
             grouped_hits = {
                 group["key"]: retriever.retrieve(
                     scholarship_group_query(group, request.question),
                     mode=request.mode,
-                    route=route_query(
-                        scholarship_group_query(group, request.question),
-                        explicit_cross_corpus=request.cross_corpus,
-                    ),
+                    route=route_query(scholarship_group_query(group, request.question)),
                     top_k=3,
                 )
                 for group in SCHOLARSHIP_EVIDENCE_GROUPS

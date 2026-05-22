@@ -10,7 +10,7 @@ Status: board-demo script, not production approval.
 
 ## Slide 2 - Trust Model
 
-- English and Turkish corpora remain separate unless comparison is explicitly requested.
+- English and Turkish corpora remain separate in V1.
 - Every substantive answer carries citations.
 - Weak, ambiguous, or out-of-scope questions are clarified or refused.
 
@@ -37,13 +37,13 @@ Use:
 
 - `What about graduation?`
 - `Bugun kampuste hangi burs etkinlikleri var?`
-- `Ingilizce ve Turkce arastirma gorevlisi burs kurallarini karsilastir; farkli kurallar var mi?`
+- `Arastirma gorevlisi burs kurallari farkli veya celiskili mi?`
 
 Expected demo behavior:
 
 - Clarify vague questions.
 - Refuse event/general-campus questions.
-- Show cross-corpus comparison only when explicitly requested.
+- Keep the answer within the detected-language regulation corpus.
 
 ## Slide 6 - Evidence And Metrics
 

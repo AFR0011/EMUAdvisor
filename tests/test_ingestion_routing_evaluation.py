@@ -123,17 +123,18 @@ class RoutingTests(unittest.TestCase):
 
         self.assertEqual(en_route.corpora, ["regulations_en"])
         self.assertEqual(tr_route.corpora, ["regulations_tr"])
-        self.assertFalse(en_route.cross_corpus)
-        self.assertFalse(tr_route.cross_corpus)
 
-    def test_explicit_cross_corpus_routing_searches_both(self) -> None:
-        route = route_query("Compare English and Turkish leave rules", explicit_cross_corpus=True)
+    def test_comparison_wording_does_not_mix_language_corpora(self) -> None:
+        route = route_query("Compare English and Turkish leave rules")
 
-        self.assertTrue(route.cross_corpus)
-        self.assertEqual(route.corpora, ["regulations_en", "regulations_tr"])
+        self.assertTrue(route.in_scope)
+        self.assertEqual(route.corpora, ["regulations_en"])
 
-    def test_cross_corpus_and_regulation_course_questions_are_in_scope(self) -> None:
-        self.assertTrue(route_query("İngilizce ve Türkçe izin kurallarını karşılaştır.").cross_corpus)
+    def test_turkish_comparison_wording_stays_in_turkish_corpus(self) -> None:
+        route = route_query("ingilizce ve turkce burs kurallarini karsilastir.")
+
+        self.assertTrue(route.in_scope)
+        self.assertEqual(route.corpora, ["regulations_tr"])
         self.assertTrue(route_query("What is the maximum course load?").in_scope)
 
     def test_out_of_scope_query_and_source_are_rejected(self) -> None:

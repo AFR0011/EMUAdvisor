@@ -4,7 +4,7 @@ Local-only prototype for answering Eastern Mediterranean University regulation q
 
 ## Scope
 
-EMU Advisor is a demo-first RAG assistant for EMU staff. It answers questions about official EMU rules and regulations from `mevzuat.emu.edu.tr` and official linked PDFs, keeps English and Turkish corpora separate by default, and refuses or asks for clarification when evidence is weak or out of scope.
+EMU Advisor is a demo-first RAG assistant for EMU staff. It answers questions about official EMU rules and regulations from `mevzuat.emu.edu.tr` and official linked PDFs, routes English and Turkish questions to separate corpora, and refuses or asks for clarification when evidence is weak or out of scope.
 
 This is not a production system and does not provide official legal or administrative decisions. All generated crawl, index, and evaluation artifacts are local and ignored under `artifacts/`.
 

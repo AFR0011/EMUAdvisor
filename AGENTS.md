@@ -22,7 +22,7 @@ Use these sources in order:
 - V1 is a staff-facing demo for answering questions about official EMU rules and regulations.
 - V1 source scope is `mevzuat.emu.edu.tr` plus official PDFs linked from or belonging to that regulation source set.
 - Runtime behavior must remain local-only; do not add external API dependencies for answering, retrieval, embeddings, reranking, or generation.
-- English and Turkish regulation corpora must remain separate unless a user explicitly asks for cross-corpus search.
+- English and Turkish regulation corpora must remain separate; do not provide cross-corpus EN/TR search or comparison in V1 unless the project scope is explicitly changed.
 - Answers must be grounded in retrieved evidence with citations and must refuse, clarify, or state uncertainty when support is insufficient.
 - Do not expand V1 into advising, general university information, private records, workflow automation, or student/staff personal support without an explicit scope change.
 

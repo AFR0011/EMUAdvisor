@@ -12,7 +12,7 @@ Primary source of truth: `EMU_RAG_Current_System_Specs.md`
 - Do not call the system validated until retrieval, answer behavior, citations, latency, and language routing are tested against the agreed evaluation set.
 - Keep V1 narrow: official EMU regulations and official linked PDFs only.
 - Runtime must remain local-only. Model downloads during setup are allowed; runtime dependency on external APIs is not.
-- English and Turkish corpora must be separate by default. Cross-corpus search must be explicit.
+- English and Turkish corpora must remain separate in V1.
 
 ## Acceptance Model
 
@@ -153,14 +153,14 @@ Implementation:
 
 - Add explicit language/corpus routing before retrieval.
 - Default user-language detection should search the matching corpus first.
-- Add an explicit cross-corpus flag or mode for user-requested comparison.
+- Route English and Turkish questions to their detected-language corpus without EN/TR corpus mixing.
 - Reject or redirect sources outside V1 scope.
 - Label source language in all retrieved hits and citations.
 
 Testing:
 
-- Build a routing matrix for English query, Turkish query, ambiguous query, explicit cross-corpus query, and out-of-scope query.
-- Assert English and Turkish hits are not mixed unless cross-corpus mode is explicit.
+- Build a routing matrix for English query, Turkish query, ambiguous query, and out-of-scope query.
+- Assert English and Turkish hits are not mixed.
 - Test out-of-scope categories: events, programs, course pages, general FAQ, and advising.
 
 Exit gate:
@@ -175,7 +175,7 @@ Implementation:
 
 - Build the initial bilingual evaluation set, starting with 20-30 questions and expanding toward 50-60.
 - For each question, record language, expected source, expected section/article/page where known, expected behavior, and out-of-scope/refusal cases.
-- Add query categories: direct rule lookup, deadlines/dates, grading/honor, fees/money, staff regulations, ambiguous terms, cross-corpus comparison, insufficient evidence, and conflicts.
+- Add query categories: direct rule lookup, deadlines/dates, grading/honor, fees/money, staff regulations, ambiguous terms, insufficient evidence, and conflicts.
 - Extend or wrap `EvaluateRetrieval.py` so it reports top-1/top-3/top-5 supporting evidence presence.
 
 Testing:

@@ -48,7 +48,7 @@ V1 must not:
 - Send emails or schedule tasks.
 - Use external APIs.
 - Claim to be an official final/legal answer.
-- Silently mix English and Turkish legal/regulatory sources.
+- Mix English and Turkish legal/regulatory sources in V1.
 
 ---
 
@@ -111,15 +111,14 @@ V1 supports:
 
 English and Turkish regulations must be treated as separate corpora because they are not one-to-one translations and may contain different rules.
 
-The assistant must not silently merge Turkish and English regulatory evidence into one answer.
+The assistant must not merge Turkish and English regulatory evidence into one answer in V1.
 
 ### 5.3 Routing Behavior
 
 Default behavior:
 
 - Detect user query language.
-- Search the matching language corpus first.
-- Allow explicit cross-corpus search when the user asks for it.
+- Search only the matching language corpus.
 - Clearly label source language when showing results.
 
 ### 5.4 Translation Add-on Later
@@ -129,7 +128,7 @@ A future translation add-on may:
 - Translate the user query into the source language for retrieval.
 - Translate quoted/summarized results into the user’s language.
 
-But it must not silently mix legal sources across languages.
+But it must not mix legal sources across languages in V1.
 
 ---
 
@@ -354,7 +353,7 @@ Recommended V1 architecture:
 [Retrieval Router]
   language detection
   corpus selection
-  cross-corpus only if explicit
+  no EN/TR corpus mixing in V1
   access-tier enforcement later
       ↓
 [Mode Preset]
@@ -853,7 +852,7 @@ Recommended next steps:
 1. Keep V1 narrow.
 2. Make architecture expandable.
 3. Do not mix policy, general information, and advice into one undifferentiated chatbot.
-4. Do not silently mix English and Turkish regulation sources.
+4. Do not mix English and Turkish regulation sources in V1.
 5. Do not let the LLM decide unsupported policy interpretation.
 6. Do not define cheap/balanced/expensive only by model size.
 7. Use retrieval and answerability gates before generation.
@@ -870,5 +869,5 @@ The V1 EMU Regulation Assistant is a local-only, staff-facing demo RAG system fo
 
 It uses separate EN/TR corpora, Qdrant-backed hybrid retrieval, multilingual embeddings, optional multilingual reranking, local LLM generation, extractive fallback under load, bottom citations, source-version traceability, anonymized query logs, and CLI-based admin refresh/review.
 
-It does not provide student/staff advice, use private student data, answer general university questions, cover events/program/course information, or silently mix English and Turkish regulatory sources.
+It does not provide student/staff advice, use private student data, answer general university questions, cover events/program/course information, or mix English and Turkish regulatory sources in V1.
 ```

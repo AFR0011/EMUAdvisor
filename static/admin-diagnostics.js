@@ -6,7 +6,6 @@
   const question = document.querySelector("#diag-question");
   const mode = document.querySelector("#diag-mode");
   const answerStyle = document.querySelector("#diag-answer-style");
-  const cross = document.querySelector("#diag-cross");
   const statusEl = document.querySelector("#status");
   const answerEl = document.querySelector("#answer");
   const evidenceGroupsEl = document.querySelector("#evidence-groups");
@@ -57,7 +56,6 @@
           question: question.value,
           mode: mode.value,
           answer_style: answerStyle.value,
-          cross_corpus: cross.checked,
           session_id: "admin-ui",
         }),
       });

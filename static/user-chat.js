@@ -5,7 +5,6 @@
   const form = document.querySelector("#chat-form");
   const sendButton = document.querySelector("#user-send");
   const question = document.querySelector("#user-question");
-  const cross = document.querySelector("#user-cross");
   const messages = document.querySelector("#messages");
   const sessionIdInput = document.querySelector("#session-id");
   const newSessionBtn = document.querySelector("#new-session-btn");
@@ -124,6 +123,9 @@
   }
 
   function renderAnswer(payload) {
+    const answerText = payload.text || payload.answer || "";
+    const extractiveText = payload.extractive_answer || payload.extractive_text || "";
+    const showExtractive = extractiveText && extractiveText !== answerText;
     const citations = (payload.citations || [])
       .map(
         (citation) => `
@@ -159,16 +161,27 @@
           .join("")}
       </div>`
         : "";
+    const supportingId = `supporting-${messageCounter++}`;
+    const supportingHtml = [
+      showExtractive
+        ? `<section class="extractive-result"><h3>Extractive result</h3><p>${escapeHtml(extractiveText)}</p></section>`
+        : "",
+      groups ? `<section><h3>Evidence groups</h3><div class="mini-groups">${groups}</div></section>` : "",
+      citations ? `<section><h3>Citations</h3><ol class="citations-list">${citations}</ol></section>` : "",
+    ].join("");
 
     return `
     <div class="answer-state">${formatState(payload.mode || payload.state)} <span>${escapeHtml(
       (payload.language || payload.query_language || "").toUpperCase()
     )}</span></div>
-    <p class="answer-text">${escapeHtml(payload.text || payload.answer || "")}</p>
-    ${groups ? `<div class="mini-groups">${groups}</div>` : ""}
     ${
-      citations
-        ? `<div class="public-citations"><button type="button" class="toggle-citations">Show citations</button><ol class="citations-list">${citations}</ol></div>`
+      answerText
+        ? `<p class="answer-text">${escapeHtml(answerText)}</p>`
+        : ""
+    }
+    ${
+      supportingHtml
+        ? `<div class="public-supporting-results"><button type="button" class="toggle-supporting-results" aria-expanded="false" aria-controls="${supportingId}">Show evidence</button><div id="${supportingId}" class="supporting-results is-collapsed" hidden>${supportingHtml}</div></div>`
         : ""
     }
     ${suggestionsHtml}
@@ -242,11 +255,14 @@
       });
   }
 
-  function toggleCitations(button) {
-    const list = button.nextElementSibling;
-    if (list && list.classList.contains("citations-list")) {
-      const hidden = list.classList.toggle("is-collapsed");
-      button.textContent = hidden ? "Show citations" : "Hide citations";
+  function toggleSupportingResults(button) {
+    const panel = button.nextElementSibling;
+    if (panel && panel.classList.contains("supporting-results")) {
+      const shouldShow = panel.hidden;
+      panel.hidden = !shouldShow;
+      panel.classList.toggle("is-collapsed", !shouldShow);
+      button.setAttribute("aria-expanded", shouldShow ? "true" : "false");
+      button.textContent = shouldShow ? "Hide evidence" : "Show evidence";
     }
   }
 
@@ -267,6 +283,7 @@
     let extractivePayload = null;
     let generatedText = "";
     let suggestions = [];
+    let terminalRendered = false;
 
     try {
       const response = await fetch("/chat/stream", {
@@ -274,7 +291,6 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: value,
-          cross_corpus: cross?.checked ?? false,
           session_id: currentSessionId,
         }),
       });
@@ -318,8 +334,10 @@
           } else if (payload.type === "retrieving") {
             setStreamingText(pending, "Searching regulation sources...");
           } else if (payload.type === "extractive_answer") {
-            extractivePayload = payload;
-            setAnswerHtml(pending, renderAnswer(payload), payload.mode);
+            extractivePayload = {
+              ...payload,
+              extractive_answer: payload.text || "",
+            };
           } else if (payload.type === "generating") {
             setStreamingText(pending, "Preparing answer...");
           } else if (payload.type === "generated_delta" && payload.text) {
@@ -335,14 +353,17 @@
           } else if (payload.type === "casual") {
             setAnswerHtml(pending, renderCasualAnswer(payload), "casual");
             extractivePayload = { state: "casual" };
+            terminalRendered = true;
           } else if (payload.type === "refusal") {
             pending.classList.add("error");
             setAnswerHtml(pending, `<p class="answer-text">${escapeHtml(payload.text || "")}</p>`, "refuse");
+            terminalRendered = true;
           } else if (payload.type === "done") {
-            if (extractivePayload && (generatedText || suggestions.length)) {
+            if (extractivePayload && !terminalRendered) {
               finalizeAssistantMessage(pending, {
                 ...extractivePayload,
                 text: generatedText || extractivePayload.text,
+                extractive_answer: extractivePayload.extractive_answer || extractivePayload.text,
                 suggestions: { questions: suggestions },
               });
             }
@@ -404,8 +425,8 @@
         question.focus();
       }
     }
-    if (event.target.classList.contains("toggle-citations")) {
-      toggleCitations(event.target);
+    if (event.target.classList.contains("toggle-supporting-results")) {
+      toggleSupportingResults(event.target);
     }
     if (event.target.id === "close-history-btn" || event.target.closest("#close-history-btn")) {
       showHistoryPanel(false);

@@ -81,10 +81,9 @@ class HybridRetriever:
         mode: str | ModePreset = "balanced",
         route: Optional[RouteDecision] = None,
         top_k: int = 8,
-        explicit_cross_corpus: bool = False,
     ) -> List[Dict[str, Any]]:
         preset = get_mode(mode) if isinstance(mode, str) else mode
-        route = route or route_query(query, explicit_cross_corpus=explicit_cross_corpus)
+        route = route or route_query(query)
         if not route.in_scope:
             return []
 
@@ -97,8 +96,6 @@ class HybridRetriever:
         fused = _fuse(dense_hits, lexical_hits, preset=preset)
         if preset.rerank_enabled:
             fused = _rerank(query, fused, limit=preset.rerank_candidates or len(fused))
-        if route.cross_corpus and len(route.corpora) > 1:
-            fused = _diversify_cross_corpus(fused, route.corpora, top_k=top_k)
         return [result.as_hit() for result in fused[:top_k]]
 
 
@@ -202,28 +199,6 @@ def _rerank(query: str, results: List[RetrievalResult], *, limit: int) -> List[R
         )
     reranked.sort(key=lambda item: item.score, reverse=True)
     return reranked[:limit] + reranked[limit:]
-
-
-def _diversify_cross_corpus(results: List[RetrievalResult], corpora: List[str], *, top_k: int) -> List[RetrievalResult]:
-    selected: List[RetrievalResult] = []
-    selected_ids = set()
-    for corpus in corpora:
-        for result in results:
-            if result.chunk.get("corpus") != corpus:
-                continue
-            chunk_id = str(result.chunk.get("chunk_id", ""))
-            selected.append(result)
-            selected_ids.add(chunk_id)
-            break
-    for result in results:
-        chunk_id = str(result.chunk.get("chunk_id", ""))
-        if chunk_id in selected_ids:
-            continue
-        selected.append(result)
-        selected_ids.add(chunk_id)
-        if len(selected) >= top_k:
-            break
-    return selected[:top_k] + [result for result in results if str(result.chunk.get("chunk_id", "")) not in selected_ids]
 
 
 def _is_index_or_toc_chunk(chunk: Mapping[str, Any]) -> bool:

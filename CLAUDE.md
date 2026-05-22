@@ -113,6 +113,6 @@ Route (routing.py) --> HybridRetriever (retrieval.py) --> Answer builder (answer
 - `.old/` is a legacy archive, not active code. Generated artifacts under `artifacts/` are ignored by Git.
 - `v1_gold.jsonl` and `v1_hard.jsonl` are assistant-curated -- never present their metrics as gold-standard without the "pending human review" caveat. `emu_gold_seed.jsonl` is source-binding but also pending human review.
 - Keep runtime local-only: do not add external API dependencies for answering, retrieval, embeddings, reranking, or generation.
-- Preserve EN/TR corpus separation by default; cross-corpus search must be explicit.
+- Preserve EN/TR corpus separation; V1 no longer exposes EN/TR cross-corpus search.
 - For verification, see `docs/RUN_PROTOCOL.md` for the verification ladder (syntax --> imports --> tests --> corpus build --> metrics).
 - For product scope, architecture direction, and sprint plans, see `EMU_RAG_Current_System_Specs.md`, `docs/PROJECT_STATE.md`, `docs/SPRINT_PLAN.md`, and `docs/REPO_MAP.md`.

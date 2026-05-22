@@ -1,6 +1,6 @@
 # Demo Metrics Snapshot
 
-Last updated: 2026-05-05
+Last updated: 2026-05-22
 
 ## Corpus Snapshot
 
@@ -82,9 +82,9 @@ Question: `Lisansüstü burslar hangi oranlarda verilir?`
 
 Mode: `answer`, answer type `table`. The top evidence comes from the Turkish scholarship/discount regulation and cites the postgraduate scholarship rows.
 
-Question: `İngilizce ve Türkçe araştırma görevlisi burs kurallarını karşılaştır; farklı kurallar var mı?`
+Question: `Araştırma görevlisi burs kuralları farklı veya çelişkili mi?`
 
-Mode: `show_conflict`, answer type `direct`. Cross-corpus retrieval is diversified so the answer cites the research-assistant rules rather than only the general scholarship table.
+Mode: `show_conflict`, answer type `direct`. Retrieval remains within the detected-language corpus and should cite the research-assistant rules rather than only the general scholarship table.
 
 Question: `Bugün kampüste hangi burs etkinlikleri var?`
 
