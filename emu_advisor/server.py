@@ -225,15 +225,25 @@ def create_app() -> FastAPI:
         return build_extractive_answer(expanded_query, hits), hits
 
     def _expand_chat_query(question: str, conversation_history: List[Mapping[str, str]]) -> str:
+        """Rewrite context-dependent follow-ups into retrievable standalone queries."""
         if not conversation_history or not is_follow_up(question):
             return question
-        last_topic = ""
+
+        # Prefer the last substantive user question as the topic anchor. Assistant answers
+        # can be long and citation-heavy, which tends to pollute retrieval when appended.
         for msg in reversed(conversation_history):
-            if msg.get("role") == "user":
-                last_topic = msg.get("text", msg.get("content", ""))
-                break
-        if last_topic:
-            return expand_follow_up_query(question, last_topic)
+            if msg.get("role") != "user":
+                continue
+            candidate = str(msg.get("text", msg.get("content", ""))).strip()
+            if not candidate:
+                continue
+            casual, _, _ = is_casual_message(candidate)
+            if casual:
+                continue
+            if candidate.casefold() == question.casefold():
+                continue
+            return expand_follow_up_query(question, candidate)
+
         return question
 
     def _handle_chat(request: ChatRequest, *, prefer_generated: bool = False) -> Dict[str, Any]:
@@ -644,6 +654,25 @@ def create_app() -> FastAPI:
             }
             for s in sessions
         ]
+
+
+    @app.get("/chat/session/{session_id}")
+    def get_chat_session(session_id: str) -> Dict[str, Any]:
+        """Return one active chat session's visible transcript."""
+        session = store.get_session(session_id)
+        if session is None:
+            return {"session_id": session_id, "messages": [], "message_count": 0}
+        messages = [
+            {"role": msg.get("role", "unknown"), "text": msg.get("text", msg.get("content", ""))}
+            for msg in session.get("messages", [])
+        ]
+        return {
+            "session_id": session_id,
+            "created_at": session.get("created_at"),
+            "last_active": session.get("last_active"),
+            "message_count": len(messages),
+            "messages": messages,
+        }
 
     class ExportRequest(BaseModel):
         session_id: str

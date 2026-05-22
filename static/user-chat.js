@@ -29,6 +29,17 @@
     sessionIdInput.value = currentSessionId;
   }
 
+  function restoreCurrentSessionIfAvailable() {
+    fetch(`/chat/session/${encodeURIComponent(currentSessionId)}`)
+      .then((r) => r.json())
+      .then((payload) => {
+        if (payload.messages && payload.messages.length > 0) {
+          renderSessionMessages(payload);
+        }
+      })
+      .catch(() => {});
+  }
+
   function generateSessionId() {
     return `session-${Math.random().toString(36).slice(2, 11)}`;
   }
@@ -52,6 +63,18 @@
     }
   }
 
+  function renderSessionMessages(payload) {
+    const transcript = payload.messages || [];
+    messages.innerHTML = "";
+    if (!transcript.length) {
+      addMessage("assistant", "New session created. Ask a question about EMU regulations.");
+      return;
+    }
+    transcript.forEach((msg) => {
+      addMessage(msg.role === "user" ? "user" : "assistant", msg.text || "");
+    });
+  }
+
   function loadSessionFromHistory(sessionId) {
     currentSessionId = sessionId;
     if (sessionIdInput) {
@@ -59,8 +82,13 @@
     }
     sessionStorage.setItem("emuSessionId", sessionId);
     showHistoryPanel(false);
-    messages.innerHTML = "";
-    addMessage("assistant", `Session ${sessionId} loaded. Continue the conversation below.`);
+    fetch(`/chat/session/${encodeURIComponent(sessionId)}`)
+      .then((r) => r.json())
+      .then(renderSessionMessages)
+      .catch(() => {
+        messages.innerHTML = "";
+        addMessage("assistant", `Session ${sessionId} loaded. Continue the conversation below.`);
+      });
   }
 
   function addMessage(role, text) {
@@ -254,6 +282,8 @@
         URL.revokeObjectURL(url);
       });
   }
+
+  restoreCurrentSessionIfAvailable();
 
   function toggleSupportingResults(button) {
     const panel = button.nextElementSibling;

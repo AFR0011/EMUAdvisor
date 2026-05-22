@@ -155,20 +155,25 @@ class OllamaGenerator:
 
 
 def build_prompt(query: str, hits: List[Mapping[str, Any]], conversation_history: Optional[List[Mapping[str, str]]] = None) -> str:
-    # Build conversation context if provided
+    # Build visible conversation context if provided. This is not chain-of-thought;
+    # it is only the user/assistant transcript needed to resolve references like
+    # "this", "that", "it", or "what about the documents?".
     conversation_part = ""
     if conversation_history:
-        # Cap at last 6 exchanges (12 messages) to stay in context
+        # Cap at last 6 exchanges (12 messages) to stay within the local model context window.
         history = conversation_history[-12:]
         conv_lines = []
         for msg in history:
             role = msg.get("role", "user")
-            content = msg.get("content", msg.get("text", ""))
+            content = str(msg.get("content", msg.get("text", ""))).strip()
+            if not content:
+                continue
             if role == "user":
                 conv_lines.append(f"User: {content}")
             else:
                 conv_lines.append(f"Assistant: {content}")
-        conversation_part = "\n\nPrevious Conversation:\n" + "\n".join(conv_lines)
+        if conv_lines:
+            conversation_part = "\n\nPrevious visible conversation for context only:\n" + "\n".join(conv_lines)
 
     evidence = []
     for idx, hit in enumerate(hits[:8], start=1):
@@ -176,6 +181,8 @@ def build_prompt(query: str, hits: List[Mapping[str, Any]], conversation_history
         evidence.append(f"[{idx}] {citation}\n{hit.get('chunk_text')}")
     return (
         "You are a local-only EMU Regulation Assistant. Answer only from the cited evidence. "
+        "Use the previous visible conversation only to resolve references in the current question; "
+        "do not answer from chat memory unless the cited evidence supports it. "
         "If evidence is incomplete, say so. Do not claim to be the university's final official answer. "
         "Do not show hidden reasoning or chain-of-thought; write only the final concise answer."
         f"{conversation_part}\n\n"

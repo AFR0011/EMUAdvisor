@@ -92,16 +92,6 @@ TR_GENERIC = (
     "sifirla",
 )
 
-
-def _normalize(query: str) -> str:
-    """Normalize query for matching."""
-    query = query.lower().strip()
-    # Remove punctuation but keep spaces
-    query = re.sub(r"[^\w\s]", " ", query)
-    # Collapse multiple spaces
-    query = re.sub(r"\s+", " ", query)
-    return query
-
 CASUAL_FILLER_WORDS = {
     "there",
     "friend",
@@ -118,6 +108,72 @@ CASUAL_FILLER_WORDS = {
     "hocam",
 }
 
+FOLLOW_UP_REFERENCE_TERMS = {
+    "it",
+    "this",
+    "that",
+    "these",
+    "those",
+    "they",
+    "them",
+    "there",
+    "same",
+    "one",
+    "ones",
+    "above",
+    "previous",
+    "mentioned",
+    "bunu",
+    "buna",
+    "bunun",
+    "bu",
+    "şu",
+    "o",
+    "bunlar",
+    "onlar",
+    "aynı",
+    "önceki",
+}
+
+FOLLOW_UP_GENERIC_TERMS = {
+    "apply",
+    "application",
+    "deadline",
+    "deadlines",
+    "documents",
+    "documentation",
+    "penalty",
+    "penalties",
+    "requirement",
+    "requirements",
+    "eligibility",
+    "amount",
+    "rate",
+    "limit",
+    "limits",
+    "duration",
+    "appeal",
+    "başvuru",
+    "belge",
+    "belgeler",
+    "ceza",
+    "şart",
+    "şartlar",
+    "süre",
+    "oran",
+    "limit",
+}
+
+
+def _normalize(query: str) -> str:
+    """Normalize query for matching."""
+    query = query.lower().strip()
+    # Remove punctuation but keep spaces
+    query = re.sub(r"[^\w\sçğıöşüÇĞİÖŞÜ]", " ", query)
+    # Collapse multiple spaces
+    query = re.sub(r"\s+", " ", query)
+    return query
+
 
 def _matches_standalone_casual(
     normalized: str,
@@ -125,14 +181,14 @@ def _matches_standalone_casual(
     *,
     max_extra_words: int = 3,
 ) -> bool:
-    """Return True only for standalone casual messages, not real questions containing casual substrings."""
+    """Match only standalone casual messages, not substrings inside real questions."""
     if not normalized:
         return False
 
-    for phrase in sorted((_normalize(item) for item in phrases), key=len, reverse=True):
+    normalized_phrases = sorted((_normalize(item) for item in phrases), key=len, reverse=True)
+    for phrase in normalized_phrases:
         if normalized == phrase:
             return True
-
         if normalized.startswith(f"{phrase} "):
             remaining = normalized[len(phrase):].strip().split()
             if (
@@ -141,7 +197,6 @@ def _matches_standalone_casual(
                 and all(word in CASUAL_FILLER_WORDS for word in remaining)
             ):
                 return True
-
     return False
 
 
@@ -151,7 +206,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
 
     Returns:
         Tuple of (is_casual, category, response_text)
-        - is_casual: True if the query matches a casual pattern
+        - is_casual: True if the query is only a casual message
         - category: One of "greeting", "thanks", "farewell", "generic", or ""
         - response_text: Friendly response to return
     """
@@ -188,7 +243,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         return (
             True,
             "thanks",
-            "Rica ederim! EMU düzenlemeleri ile ilgili başka sorulariniz varsa, lütfen sorun.",
+            "Rica ederim! EMU düzenlemeleri ile ilgili başka sorularınız varsa, lütfen sorun.",
         )
 
     # Check English farewells
@@ -204,7 +259,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         return (
             True,
             "farewell",
-            "Görüşürüz! İyi günler dilerim; başka sorulariniz olursa lütfen geri dönün.",
+            "Görüşürüz! İyi günler dilerim; başka sorularınız olursa lütfen geri dönün.",
         )
 
     # Check English generics
@@ -222,7 +277,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
             True,
             "generic",
             "Ben EMU Asistanıyım, Doğu Akdeniz Üniversitesi düzenlemeleri için yerel bir RAG asistanıyım. "
-            "Resmi regulation veritabanindan sorulariniza cevap verebilirim. Nedeni öğrenmek istiyorsunuz?",
+            "Resmi düzenleme veritabanından sorularınıza cevap verebilirim. Ne öğrenmek istiyorsunuz?",
         )
 
     return (False, "", "")
@@ -230,22 +285,31 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
 
 def is_follow_up(query: str) -> bool:
     """
-    Detect if query is a follow-up to a previous conversation.
+    Detect if query is likely a follow-up to a previous conversation.
 
-    Follow-ups include:
-    - Pronouns without clear subject: "what about it", "and what", "how about"
-    - Short questions referencing prior context: "what about the penalty", "and if"
-    - Questions starting with "what", "how", "and", "but" without clear context
+    This is intentionally conservative: it only marks questions as follow-ups when
+    they contain reference words such as "this/that/it" or are short, contextless
+    questions like "how do I apply?" after a previous topic exists.
     """
     normalized = _normalize(query)
     words = normalized.split()
+    if not words:
+        return False
 
-    # Very short queries that likely need context
-    if len(words) <= 3:
-        # But not if it's a complete question on its own
-        complete_questions = ("why", "where", "when", "who", "what", "how", "which", "whom", "whose")
-        if words[0] in complete_questions:
-            return True
+    word_set = set(words)
+
+    # Explicit references to prior context.
+    if word_set & FOLLOW_UP_REFERENCE_TERMS:
+        return True
+
+    # Very short questions that usually need the previous topic.
+    wh_words = {"why", "where", "when", "who", "what", "how", "which", "ne", "nasıl", "nasil", "nerede", "ne zaman", "kim", "hangi"}
+    if words[0] in wh_words and len(words) <= 5:
+        return True
+
+    # Short procedural questions like "How do I apply?" or "What documents are needed?"
+    if words[0] in wh_words and len(words) <= 8 and (word_set & FOLLOW_UP_GENERIC_TERMS):
+        return True
 
     # Pattern-based detection
     follow_up_patterns = [
@@ -259,12 +323,15 @@ def is_follow_up(query: str) -> bool:
         r"^but how",
         r"^what if",
         r"^and if",
-        r"^but if",
+        r"^does that",
+        r"^is that",
+        r"^can that",
+        r"^can i still",
+        r"^what happens if",
         r"^te ne",
         r"^ve ne",
         r"^pe ne",
         r"^ama ne",
-        r"^pe ne",
         r"^eğer ne",
         r"^ve ne",
     ]
@@ -286,19 +353,22 @@ def expand_follow_up_query(query: str, last_topic: str) -> str:
         result: "what about the penalty attendance requirement"
     """
     normalized = _normalize(query)
+    last_topic_norm = _normalize(last_topic)
 
-    # If the query is very short, just append the last topic
+    if not last_topic_norm:
+        return query
+
+    # If the query is very short, append the last topic.
     words = normalized.split()
-    if len(words) <= 4:
-        # Don't duplicate keywords
-        if normalized not in last_topic.lower() and last_topic.lower() not in normalized:
-            return f"{query} {last_topic}"
+    if len(words) <= 8:
+        if normalized not in last_topic_norm and last_topic_norm not in normalized:
+            return f"{query} Context from previous question: {last_topic}"
 
-    # For slightly longer queries, extract key terms from last_topic to append
+    # For longer follow-ups, append compact key terms from the previous topic.
     topic_words = last_topic.split()
-    key_terms = " ".join(topic_words[:5])  # First 5 words as key terms
+    key_terms = " ".join(topic_words[:8])
 
-    if key_terms.lower() not in normalized:
-        return f"{query} {key_terms}"
+    if key_terms and _normalize(key_terms) not in normalized:
+        return f"{query} Context from previous question: {key_terms}"
 
     return query
