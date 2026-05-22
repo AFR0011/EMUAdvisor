@@ -102,6 +102,48 @@ def _normalize(query: str) -> str:
     query = re.sub(r"\s+", " ", query)
     return query
 
+CASUAL_FILLER_WORDS = {
+    "there",
+    "friend",
+    "assistant",
+    "bot",
+    "emu",
+    "please",
+    "pls",
+    "again",
+    "now",
+    "today",
+    "sir",
+    "madam",
+    "hocam",
+}
+
+
+def _matches_standalone_casual(
+    normalized: str,
+    phrases: tuple[str, ...],
+    *,
+    max_extra_words: int = 3,
+) -> bool:
+    """Return True only for standalone casual messages, not real questions containing casual substrings."""
+    if not normalized:
+        return False
+
+    for phrase in sorted((_normalize(item) for item in phrases), key=len, reverse=True):
+        if normalized == phrase:
+            return True
+
+        if normalized.startswith(f"{phrase} "):
+            remaining = normalized[len(phrase):].strip().split()
+            if (
+                remaining
+                and len(remaining) <= max_extra_words
+                and all(word in CASUAL_FILLER_WORDS for word in remaining)
+            ):
+                return True
+
+    return False
+
 
 def is_casual_message(query: str) -> tuple[bool, str, str]:
     """
@@ -116,7 +158,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
     normalized = _normalize(query)
 
     # Check English greetings
-    if any(greet in normalized for greet in EN_GREETINGS):
+    if _matches_standalone_casual(normalized, EN_GREETINGS):
         return (
             True,
             "greeting",
@@ -125,7 +167,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check Turkish greetings
-    if any(greet in normalized for greet in TR_GREETINGS):
+    if _matches_standalone_casual(normalized, TR_GREETINGS):
         return (
             True,
             "greeting",
@@ -134,7 +176,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check English thanks
-    if any(thx in normalized for thx in EN_THANKS):
+    if _matches_standalone_casual(normalized, EN_THANKS):
         return (
             True,
             "thanks",
@@ -142,7 +184,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check Turkish thanks
-    if any(thx in normalized for thx in TR_THANKS):
+    if _matches_standalone_casual(normalized, TR_THANKS):
         return (
             True,
             "thanks",
@@ -150,7 +192,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check English farewells
-    if any(fw in normalized for fw in EN_FAREWELLS):
+    if _matches_standalone_casual(normalized, EN_FAREWELLS):
         return (
             True,
             "farewell",
@@ -158,7 +200,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check Turkish farewells
-    if any(fw in normalized for fw in TR_FAREWELLS):
+    if _matches_standalone_casual(normalized, TR_FAREWELLS):
         return (
             True,
             "farewell",
@@ -166,7 +208,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check English generics
-    if any(gen in normalized for gen in EN_GENERIC):
+    if _matches_standalone_casual(normalized, EN_GENERIC):
         return (
             True,
             "generic",
@@ -175,7 +217,7 @@ def is_casual_message(query: str) -> tuple[bool, str, str]:
         )
 
     # Check Turkish generics
-    if any(gen in normalized for gen in TR_GENERIC):
+    if _matches_standalone_casual(normalized, TR_GENERIC):
         return (
             True,
             "generic",
