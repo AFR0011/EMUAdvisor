@@ -25,7 +25,7 @@ from .answer import (
     scholarship_group_query,
 )
 from .audit_log import AuditEvent, AuditLogger, summarize_audit_log
-from .conversation_detection import expand_follow_up_query, is_casual_message, is_follow_up
+from .conversation_detection import is_casual_message
 from .citations import unique_citations
 from .text import tokenize
 from .conversation_store import get_store
@@ -33,6 +33,7 @@ from .corpus import load_corpus, load_latest_metrics
 from .embeddings import create_embedding_model
 from .generation import DEFAULT_OLLAMA_LLM, OllamaGenerator
 from .modes import MODE_PRESETS
+from .query_understanding import QueryUnderstandingResult, understand_query
 from .retrieval import HybridRetriever
 from .routing import detect_query_language, route_query
 
@@ -106,6 +107,10 @@ def create_app() -> FastAPI:
         num_predict=int(os.getenv("EMU_ADVISOR_LLM_NUM_PREDICT", "320")),
         num_ctx=int(os.getenv("EMU_ADVISOR_LLM_NUM_CTX", "4096")),
     )
+    query_rewrite_mode = os.getenv("EMU_ADVISOR_QUERY_REWRITE", "llm")
+    query_rewrite_model = os.getenv("EMU_ADVISOR_QUERY_REWRITE_MODEL") or os.getenv("EMU_ADVISOR_LLM", DEFAULT_OLLAMA_LLM)
+    query_rewrite_timeout_s = float(os.getenv("EMU_ADVISOR_QUERY_REWRITE_TIMEOUT_S", "3"))
+    query_rewrite_base_url = os.getenv("EMU_ADVISOR_QUERY_REWRITE_BASE_URL", "http://localhost:11434")
     store = get_store()
     logger = AuditLogger(ROOT_DIR / "logs" / "audit.jsonl")
 
@@ -212,9 +217,12 @@ def create_app() -> FastAPI:
         if route.in_scope and is_scholarship_bundle_query(expanded_query):
             grouped_hits = {
                 group["key"]: retriever.retrieve(
-                    scholarship_group_query(group, expanded_query),
+                    scholarship_group_query(group, expanded_query, language_hint=route.query_language),
                     mode=USER_CHAT_RETRIEVAL_MODE,
-                    route=route_query(scholarship_group_query(group, expanded_query)),
+                    route=route_query(
+                        scholarship_group_query(group, expanded_query, language_hint=route.query_language),
+                        language_hint=route.query_language,
+                    ),
                     top_k=3,
                 )
                 for group in SCHOLARSHIP_EVIDENCE_GROUPS
@@ -224,27 +232,18 @@ def create_app() -> FastAPI:
         hits = retriever.retrieve(expanded_query, mode=USER_CHAT_RETRIEVAL_MODE, route=route, top_k=8)
         return build_extractive_answer(expanded_query, hits), hits
 
-    def _expand_chat_query(question: str, conversation_history: List[Mapping[str, str]]) -> str:
-        """Rewrite context-dependent follow-ups into retrievable standalone queries."""
-        if not conversation_history or not is_follow_up(question):
-            return question
-
-        # Prefer the last substantive user question as the topic anchor. Assistant answers
-        # can be long and citation-heavy, which tends to pollute retrieval when appended.
-        for msg in reversed(conversation_history):
-            if msg.get("role") != "user":
-                continue
-            candidate = str(msg.get("text", msg.get("content", ""))).strip()
-            if not candidate:
-                continue
-            casual, _, _ = is_casual_message(candidate)
-            if casual:
-                continue
-            if candidate.casefold() == question.casefold():
-                continue
-            return expand_follow_up_query(question, candidate)
-
-        return question
+    def _understand_request_query(
+        question: str,
+        conversation_history: Optional[List[Mapping[str, str]]] = None,
+    ) -> QueryUnderstandingResult:
+        return understand_query(
+            question,
+            conversation_history or [],
+            mode=query_rewrite_mode,
+            model=query_rewrite_model,
+            base_url=query_rewrite_base_url,
+            timeout_s=query_rewrite_timeout_s,
+        )
 
     def _handle_chat(request: ChatRequest, *, prefer_generated: bool = False) -> Dict[str, Any]:
         """Handle a chat request with session management, casual detection, and full pipeline."""
@@ -287,8 +286,9 @@ def create_app() -> FastAPI:
                 "evidence_groups": [],
             }
 
-        expanded_query = _expand_chat_query(request.question, conversation_history)
-        route = route_query(expanded_query)
+        understanding = _understand_request_query(request.question, conversation_history)
+        resolved_query = understanding.standalone_query
+        route = route_query(resolved_query, language_hint=understanding.retrieval_language)
 
         if not route.in_scope:
             store.add_message(session_id, "user", request.question)
@@ -303,7 +303,7 @@ def create_app() -> FastAPI:
                 "evidence_groups": [],
             }
 
-        extractive_answer, hits = _chat_retrieve_answer(expanded_query, route=route)
+        extractive_answer, hits = _chat_retrieve_answer(resolved_query, route=route)
 
         # Generate LLM answer with conversation history
         generated_answer = None
@@ -314,7 +314,7 @@ def create_app() -> FastAPI:
         if status.get("model_available"):
             generation_hits = extractive_answer.decision.supported_hits if extractive_answer.mode in {"answer", "answer_uncertain"} else []
             if generation_hits:
-                generated = generator.generate(expanded_query, generation_hits, conversation_history)
+                generated = generator.generate(resolved_query, generation_hits, conversation_history)
                 generation_ms = generated.latency_ms
                 generated_error = generated.error
                 generated_answer = generated.text or None
@@ -433,8 +433,9 @@ def create_app() -> FastAPI:
 
             return StreamingResponse(casual_events(), media_type="application/x-ndjson")
 
-        expanded_query = _expand_chat_query(request.question, conversation_history)
-        route = route_query(expanded_query)
+        understanding = _understand_request_query(request.question, conversation_history)
+        resolved_query = understanding.standalone_query
+        route = route_query(resolved_query, language_hint=understanding.retrieval_language)
 
         if not route.in_scope:
             refusal = "I cannot answer questions outside the scope of EMU regulations."
@@ -455,11 +456,11 @@ def create_app() -> FastAPI:
             yield json.dumps({"type": "retrieving"}, ensure_ascii=False) + "\n"
 
             extractive_answer, hits = _chat_retrieve_answer(
-                expanded_query,
+                resolved_query,
                 route=route,
             )
             citations = [citation.as_dict() for citation in extractive_answer.citations]
-            suggestions = _generate_suggestions(expanded_query, hits)
+            suggestions = _generate_suggestions(resolved_query, hits)
             final_assistant_text = extractive_answer.text
 
             status = generator.status(timeout_s=llm_probe_timeout_s, smoke=False)
@@ -473,7 +474,7 @@ def create_app() -> FastAPI:
                 yield json.dumps({"type": "generating"}, ensure_ascii=False) + "\n"
                 generated_parts: List[str] = []
                 try:
-                    for delta in generator.stream(expanded_query, generation_hits, normalized_history):
+                    for delta in generator.stream(resolved_query, generation_hits, normalized_history):
                         if delta.get("type") == "generated_delta" and delta.get("text"):
                             generated_parts.append(delta["text"])
                         yield json.dumps(delta, ensure_ascii=False) + "\n"
@@ -515,29 +516,37 @@ def create_app() -> FastAPI:
 
     def _answer_request(request: AskRequest, *, event_type: str = "ask") -> Dict[str, Any]:
         total_started = time.perf_counter()
+        rewrite_started = time.perf_counter()
+        conversation_history = store.get_history(request.session_id) if request.session_id else []
+        understanding = _understand_request_query(request.question, conversation_history)
+        resolved_query = understanding.standalone_query
+        rewrite_ms = _elapsed_ms(rewrite_started)
         route_started = time.perf_counter()
-        route = route_query(request.question)
+        route = route_query(resolved_query, language_hint=understanding.retrieval_language)
         route_ms = _elapsed_ms(route_started)
         retrieve_started = time.perf_counter()
-        if route.in_scope and is_scholarship_bundle_query(request.question):
+        if route.in_scope and is_scholarship_bundle_query(resolved_query):
             grouped_hits = {
                 group["key"]: retriever.retrieve(
-                    scholarship_group_query(group, request.question),
+                    scholarship_group_query(group, resolved_query, language_hint=route.query_language),
                     mode=request.mode,
-                    route=route_query(scholarship_group_query(group, request.question)),
+                    route=route_query(
+                        scholarship_group_query(group, resolved_query, language_hint=route.query_language),
+                        language_hint=route.query_language,
+                    ),
                     top_k=3,
                 )
                 for group in SCHOLARSHIP_EVIDENCE_GROUPS
             }
             hits = [hit for group_hits in grouped_hits.values() for hit in group_hits]
-            answer = build_topic_bundle_answer(request.question, grouped_hits)
+            answer = build_topic_bundle_answer(resolved_query, grouped_hits)
         else:
-            hits = retriever.retrieve(request.question, mode=request.mode, route=route, top_k=8)
+            hits = retriever.retrieve(resolved_query, mode=request.mode, route=route, top_k=8)
             answer = None
         retrieve_ms = _elapsed_ms(retrieve_started)
         extractive_started = time.perf_counter()
         if answer is None:
-            answer = build_extractive_answer(request.question, hits)
+            answer = build_extractive_answer(resolved_query, hits)
         extractive_ms = _elapsed_ms(extractive_started)
         citations = [citation.as_dict() for citation in answer.citations]
         generation_ms = None
@@ -559,7 +568,7 @@ def create_app() -> FastAPI:
                             "chunk_text": answer.text,
                         }
                     ]
-                generated = generator.generate(request.question, generation_hits)
+                generated = generator.generate(resolved_query, generation_hits)
                 generation_ms = generated.latency_ms
                 generated_error = generated.error
                 generated_answer = generated.text or None
@@ -591,8 +600,12 @@ def create_app() -> FastAPI:
             "citations": citations,
             "hits": hits,
             "route": route.__dict__,
+            "resolved_question": resolved_query,
+            "query_rewrite_method": understanding.method,
+            "query_understanding": understanding.as_dict(),
             "latency_ms": latency_ms,
             "timings": {
+                "query_rewrite_ms": rewrite_ms,
                 "route_ms": route_ms,
                 "retrieve_ms": retrieve_ms,
                 "extractive_ms": extractive_ms,
@@ -603,18 +616,24 @@ def create_app() -> FastAPI:
 
     @app.post("/ask/stream")
     def ask_stream(request: AskRequest) -> StreamingResponse:
-        route = route_query(request.question)
-        if route.in_scope and is_scholarship_bundle_query(request.question):
+        conversation_history = store.get_history(request.session_id) if request.session_id else []
+        understanding = _understand_request_query(request.question, conversation_history)
+        resolved_query = understanding.standalone_query
+        route = route_query(resolved_query, language_hint=understanding.retrieval_language)
+        if route.in_scope and is_scholarship_bundle_query(resolved_query):
             grouped_hits = {
                 group["key"]: retriever.retrieve(
-                    scholarship_group_query(group, request.question),
+                    scholarship_group_query(group, resolved_query, language_hint=route.query_language),
                     mode=request.mode,
-                    route=route_query(scholarship_group_query(group, request.question)),
+                    route=route_query(
+                        scholarship_group_query(group, resolved_query, language_hint=route.query_language),
+                        language_hint=route.query_language,
+                    ),
                     top_k=3,
                 )
                 for group in SCHOLARSHIP_EVIDENCE_GROUPS
             }
-            answer = build_topic_bundle_answer(request.question, grouped_hits)
+            answer = build_topic_bundle_answer(resolved_query, grouped_hits)
 
             def bundle_events():
                 yield json.dumps(
@@ -632,10 +651,10 @@ def create_app() -> FastAPI:
 
             return StreamingResponse(bundle_events(), media_type="application/x-ndjson")
 
-        hits = retriever.retrieve(request.question, mode=request.mode, route=route, top_k=8)
+        hits = retriever.retrieve(resolved_query, mode=request.mode, route=route, top_k=8)
 
         def events():
-            for event in progressive_answer_events(request.question, hits):
+            for event in progressive_answer_events(resolved_query, hits):
                 yield json.dumps(event, ensure_ascii=False) + "\n"
 
         return StreamingResponse(events(), media_type="application/x-ndjson")

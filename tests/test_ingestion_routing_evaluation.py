@@ -130,6 +130,23 @@ class RoutingTests(unittest.TestCase):
         self.assertTrue(route.in_scope)
         self.assertEqual(route.corpora, ["regulations_en"])
 
+    def test_ascii_turkish_routes_to_turkish_corpus(self) -> None:
+        for query in (
+            "burs oranlari nelerdir",
+            "not itirazi nasil yapilir",
+            "basvuru belgeleri nelerdir",
+        ):
+            with self.subTest(query=query):
+                route = route_query(query)
+                self.assertTrue(route.in_scope)
+                self.assertEqual(route.corpora, ["regulations_tr"])
+
+    def test_english_not_false_positive_stays_english(self) -> None:
+        route = route_query("not allowed")
+
+        self.assertTrue(route.in_scope)
+        self.assertEqual(route.corpora, ["regulations_en"])
+
     def test_turkish_comparison_wording_stays_in_turkish_corpus(self) -> None:
         route = route_query("ingilizce ve turkce burs kurallarini karsilastir.")
 

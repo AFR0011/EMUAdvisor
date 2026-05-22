@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional
 from urllib.parse import urlparse
 
-from .text import normalize_text
+from .text import normalize_text, tokenize
 
 
 TURKISH_MARKERS = set("\u00e7\u011f\u0131\u00f6\u015f\u00fc\u00c7\u011e\u0130\u00d6\u015e\u00dc")
@@ -27,6 +27,117 @@ OUT_OF_SCOPE_TERMS = (
     "bolum program",
 )
 
+TURKISH_SIGNAL_TERMS = {
+    "akademik",
+    "arastirma",
+    "asgari",
+    "basari",
+    "basvuru",
+    "belge",
+    "belgeler",
+    "burs",
+    "ceza",
+    "celiskili",
+    "dau",
+    "devam",
+    "devamsizlik",
+    "dilekce",
+    "gorev",
+    "gorevli",
+    "gorevlisi",
+    "gorevlileri",
+    "harc",
+    "hangi",
+    "itiraz",
+    "itirazi",
+    "kac",
+    "kampus",
+    "karsilastir",
+    "kural",
+    "kurallar",
+    "kurallari",
+    "lisansustu",
+    "maas",
+    "madde",
+    "maddesi",
+    "mali",
+    "mevzuat",
+    "muafiyet",
+    "nasil",
+    "ne",
+    "neden",
+    "neler",
+    "nelerdir",
+    "nerede",
+    "nedir",
+    "ogrenci",
+    "ogretim",
+    "oran",
+    "oranlar",
+    "oranlari",
+    "personel",
+    "sinav",
+    "sorulmali",
+    "seref",
+    "sure",
+    "turkce",
+    "ucret",
+    "uygulama",
+    "yandal",
+    "yararlanabilir",
+    "yardim",
+    "yapilir",
+    "yollar",
+    "yonetmelik",
+    "yuksek",
+    "yuzde",
+}
+
+ENGLISH_SIGNAL_TERMS = {
+    "about",
+    "allowed",
+    "answer",
+    "appeal",
+    "apply",
+    "attendance",
+    "campus",
+    "course",
+    "deadline",
+    "documents",
+    "eligibility",
+    "english",
+    "exam",
+    "grade",
+    "high",
+    "honour",
+    "how",
+    "maximum",
+    "penalty",
+    "regulation",
+    "requirement",
+    "rule",
+    "rules",
+    "scholarship",
+    "student",
+    "turkish",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+}
+
+TURKISH_SIGNAL_PHRASES = (
+    "anlama gelir",
+    "ne zaman",
+    "nasil yapilir",
+    "nasil basvur",
+    "hangi ofis",
+    "buna nasil",
+    "bunun icin",
+)
+
 
 @dataclass(frozen=True)
 class RouteDecision:
@@ -36,44 +147,44 @@ class RouteDecision:
     reason: str
 
 
-def detect_query_language(query: str) -> str:
+def detect_query_language(query: str, *, language_hint: Optional[str] = None) -> str:
+    if language_hint in {"en", "tr"}:
+        return language_hint
+
     if any(char in TURKISH_MARKERS for char in query):
         return "tr"
     lowered = normalize_text(query)
-    if any(
-        token in lowered
-        for token in (
-            " nedir",
-            " yonetmelik",
-            " madde",
-            " ogrenci",
-            "ogrenci",
-            "ogretim",
-            " anlama gelir",
-            " notu",
-            " burs",
-            " harc",
-            "harc",
-            " maas",
-            "maas",
-            " barem",
-        )
-    ):
+    tokens = tokenize(query)
+    token_set = set(tokens)
+
+    turkish_score = 0
+    english_score = 0
+    turkish_score += sum(1 for token in token_set if token in TURKISH_SIGNAL_TERMS)
+    english_score += sum(1 for token in token_set if token in ENGLISH_SIGNAL_TERMS)
+    turkish_score += sum(2 for phrase in TURKISH_SIGNAL_PHRASES if phrase in lowered)
+
+    # Turkish legal/regulatory questions commonly contain one or more Turkish
+    # suffixes after ASCII transliteration; keep this conservative to avoid
+    # classifying English phrases such as "not allowed" as Turkish.
+    if any(token.endswith(("lari", "leri", "dir", "mali", "meli")) and len(token) > 5 for token in token_set):
+        turkish_score += 1
+
+    if turkish_score >= 2 and turkish_score >= english_score:
         return "tr"
     return "en"
 
 
-def route_query(query: str) -> RouteDecision:
+def route_query(query: str, *, language_hint: Optional[str] = None) -> RouteDecision:
     lowered = normalize_text(query)
+    language = detect_query_language(query, language_hint=language_hint)
     if any(term in lowered for term in OUT_OF_SCOPE_TERMS):
         return RouteDecision(
-            query_language=detect_query_language(query),
+            query_language=language,
             corpora=[],
             in_scope=False,
             reason="query appears outside V1 regulations scope",
         )
 
-    language = detect_query_language(query)
     corpus = "regulations_tr" if language == "tr" else "regulations_en"
     return RouteDecision(
         query_language=language,

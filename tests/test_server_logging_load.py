@@ -13,11 +13,26 @@ from emu_advisor.corpus import CorpusBundle, corpus_status
 from emu_advisor.demo import demo_chunks
 from emu_advisor.embeddings import HashEmbeddingModel
 from emu_advisor.load_test import simulate_active_sessions
+from emu_advisor.query_understanding import QueryUnderstandingResult
 from emu_advisor.retrieval import HybridRetriever
 from emu_advisor.server import create_app
 
 
 class ServerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._env = patch.dict(
+            "os.environ",
+            {
+                "EMU_ADVISOR_QUERY_REWRITE": "deterministic",
+                "EMU_ADVISOR_DISABLE_CHAT_PERSISTENCE": "1",
+            },
+            clear=False,
+        )
+        self._env.start()
+
+    def tearDown(self) -> None:
+        self._env.stop()
+
     def test_fastapi_health_whoami_and_ask(self) -> None:
         client = TestClient(create_app())
 
@@ -261,6 +276,66 @@ class ServerTests(unittest.TestCase):
         self.assertIn("Research assistant and postgraduate scholarships", titles)
         self.assertIn("Sports grant", titles)
         self.assertIn("High-honour award", titles)
+
+    def test_language_switch_uses_resolved_turkish_query_without_cross_corpus(self) -> None:
+        observed_routes: list[tuple[str, tuple[str, ...]]] = []
+        original_retrieve = HybridRetriever.retrieve
+
+        def fake_understand(question, history=None, **_kwargs):
+            if question == "buna nasil basvururum":
+                self.assertTrue(any(msg.get("role") == "user" for msg in history or []))
+                return QueryUnderstandingResult(
+                    input_language="tr",
+                    retrieval_language="tr",
+                    standalone_query="Devam şartı için başvuru nasıl yapılır?",
+                    is_follow_up=True,
+                    confidence="high",
+                    method="llm",
+                )
+            return QueryUnderstandingResult(
+                input_language="en",
+                retrieval_language="en",
+                standalone_query=question,
+                is_follow_up=False,
+                confidence="high",
+                method="llm",
+            )
+
+        def capture_retrieve(self, query, *args, **kwargs):
+            route = kwargs.get("route")
+            corpora = tuple(route.corpora) if route is not None else ()
+            observed_routes.append((query, corpora))
+            return original_retrieve(self, query, *args, **kwargs)
+
+        with patch("emu_advisor.server.understand_query", side_effect=fake_understand), patch.object(
+            HybridRetriever, "retrieve", new=capture_retrieve
+        ), patch(
+            "emu_advisor.generation.OllamaGenerator.status",
+            return_value={"model_available": False, "smoke_ok": False, "error": "missing model", "latency_ms": 1},
+        ):
+            client = TestClient(create_app())
+            first = client.post(
+                "/chat",
+                json={"question": "What is the attendance requirement?", "session_id": "language-switch-chat"},
+            )
+            second = client.post(
+                "/chat",
+                json={"question": "buna nasil basvururum", "session_id": "language-switch-chat"},
+            )
+            stream = client.post(
+                "/chat/stream",
+                json={"question": "buna nasil basvururum", "session_id": "language-switch-chat"},
+            )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["language"], "tr")
+        self.assertEqual(stream.status_code, 200)
+        stream_events = [json.loads(line) for line in stream.text.splitlines() if line.strip()]
+        extractive_events = [event for event in stream_events if event.get("type") == "extractive_answer"]
+        self.assertEqual(extractive_events[-1]["language"], "tr")
+        self.assertIn(("Devam şartı için başvuru nasıl yapılır?", ("regulations_tr",)), observed_routes)
+        self.assertTrue(all(corpora in {("regulations_en",), ("regulations_tr",)} for _, corpora in observed_routes))
 
 
 class AuditLoggingTests(unittest.TestCase):

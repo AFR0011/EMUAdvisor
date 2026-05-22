@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from .text import normalize_text
+
 
 # English casual patterns
 EN_GREETINGS = (
@@ -127,12 +129,12 @@ FOLLOW_UP_REFERENCE_TERMS = {
     "buna",
     "bunun",
     "bu",
-    "şu",
+    "su",
     "o",
     "bunlar",
     "onlar",
-    "aynı",
-    "önceki",
+    "ayni",
+    "onceki",
 }
 
 FOLLOW_UP_GENERIC_TERMS = {
@@ -153,13 +155,13 @@ FOLLOW_UP_GENERIC_TERMS = {
     "limits",
     "duration",
     "appeal",
-    "başvuru",
+    "basvuru",
     "belge",
     "belgeler",
     "ceza",
-    "şart",
-    "şartlar",
-    "süre",
+    "sart",
+    "sartlar",
+    "sure",
     "oran",
     "limit",
 }
@@ -167,9 +169,9 @@ FOLLOW_UP_GENERIC_TERMS = {
 
 def _normalize(query: str) -> str:
     """Normalize query for matching."""
-    query = query.lower().strip()
+    query = normalize_text(query).lower().strip()
     # Remove punctuation but keep spaces
-    query = re.sub(r"[^\w\sçğıöşüÇĞİÖŞÜ]", " ", query)
+    query = re.sub(r"[^\w\s]", " ", query)
     # Collapse multiple spaces
     query = re.sub(r"\s+", " ", query)
     return query
@@ -303,7 +305,7 @@ def is_follow_up(query: str) -> bool:
         return True
 
     # Very short questions that usually need the previous topic.
-    wh_words = {"why", "where", "when", "who", "what", "how", "which", "ne", "nasıl", "nasil", "nerede", "ne zaman", "kim", "hangi"}
+    wh_words = {"why", "where", "when", "who", "what", "how", "which", "ne", "nasil", "nerede", "kim", "hangi"}
     if words[0] in wh_words and len(words) <= 5:
         return True
 
@@ -332,7 +334,7 @@ def is_follow_up(query: str) -> bool:
         r"^ve ne",
         r"^pe ne",
         r"^ama ne",
-        r"^eğer ne",
+        r"^eger ne",
         r"^ve ne",
     ]
 

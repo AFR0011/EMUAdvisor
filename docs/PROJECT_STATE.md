@@ -40,13 +40,14 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - `emu_advisor/schema.py` defines canonical document/chunk validation and legacy chunk mapping.
 - `emu_advisor/validate_jsonl.py` validates canonical document or chunk JSONL files.
 - `emu_advisor/html_ingest.py` and `emu_advisor/pdf_ingest.py` emit canonical chunks from official-scope HTML/PDF sources; HTML ingestion now preserves table summaries, row-level evidence, and derived academic salary facts.
-- `emu_advisor/routing.py` handles language/corpus/scope routing and keeps retrieval within the detected-language corpus.
+- `emu_advisor/routing.py` handles language/corpus/scope routing, including ASCII-written Turkish detection, and keeps retrieval within the detected-language corpus.
 - `emu_advisor/evaluation.py` validates expanded bilingual evaluation sets and computes top-k retrieval metrics.
 - `emu_advisor/evaluation.py` also accepts provisional gold-seed cases when they are explicitly marked as pending source binding and excluded from hard quality claims.
 - `emu_advisor/pipeline.py` performs official-host crawl/build into canonical ignored artifacts.
 - `emu_advisor/metrics.py` runs evaluation and writes dashboard-ready JSON, Markdown, per-case CSV, human-review CSV, failure-analysis summaries, and cheap/balanced/expensive mode comparisons.
 - `emu_advisor/corpus.py` loads `artifacts/demo_corpus/latest/chunks.jsonl` when present and falls back to fixture chunks otherwise.
 - `emu_advisor/generation.py` provides local Ollama `qwen3:8b` generation with extractive fallback on failure.
+- `emu_advisor/query_understanding.py` adds local LLM-first query rewriting for standalone retrieval queries, Turkish ASCII normalization, and EN/TR mid-conversation follow-ups with deterministic fallback.
 - `emu_advisor/embeddings.py`, `store.py`, `retrieval.py`, `modes.py`, and `index.py` provide local retrieval infrastructure plus a Qdrant adapter/build CLI with local fallback.
 - `emu_advisor/answer.py` and `citations.py` implement deterministic answerability, refusal, conflict, table answers, scholarship topic bundles, fallback, and citation behavior.
 - `emu_advisor/admin.py` provides snapshot/diff/activation workflow.
@@ -66,11 +67,13 @@ Harden and productize the V1 EMU Regulation Assistant around the current spec:
 - Legacy `.old/` Python syntax scan passed for 15 files.
 - Legacy `.old/backend` import smoke failed because `.old/backend/rag_adapter.py` imports `key` from `anyio`, which is not available in the installed AnyIO package.
 - Root schema unit tests passed: `python -m unittest discover -s tests`.
-- Full root test suite passed: 62 tests after EN/TR cross-corpus removal, `/chat/stream` evidence reveal timing, and balanced-mode user-chat regression coverage.
+- Full root test suite passed: 69 tests after LLM-first query-understanding, ASCII Turkish routing, and EN/TR language-switch regression coverage.
 - Canonical valid chunk fixture passed JSONL validation.
 - Canonical invalid chunk fixture failed validation as expected with field-level errors.
-- Root package/test/tool syntax scan passed for 35 files.
+- Root package/test/tool syntax scan passed for 38 files.
 - Candidate evaluation set validation passed for 60 cases: 30 English, 30 Turkish, 48 answerable, 4 refusal, 4 clarification, and 4 conflict/cross-source cases.
+- Hard regression set validation passed for 50 cases: 25 English, 25 Turkish, 48 answerable, and 2 refusal cases.
+- Targeted real-corpus probes for ASCII Turkish prompts (`burs oranlari nelerdir`, `not itirazi nasil yapilir`, `basvuru belgeleri nelerdir`, `buna nasil basvururum`) route to `regulations_tr`; contextless follow-ups still depend on the query-understanding rewrite for meaningful standalone retrieval.
 - Provisional gold seed validation is expected to pass for 50 source-binding-pending cases, but those cases are not human-reviewed or adjudicated.
 - FastAPI app import smoke passed: app title `EMU Regulation Assistant`.
 - Live crawl completed from `https://mevzuat.emu.edu.tr/content.htm` and `https://mevzuat.emu.edu.tr/Content-en.htm`: 123 pages, 22 PDFs, 8,714 chunks, 4 crawl errors.

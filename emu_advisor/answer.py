@@ -172,8 +172,8 @@ def is_scholarship_bundle_query(query: str) -> bool:
     return any(marker in lowered for marker in broad_markers) or len(query.split()) <= 5
 
 
-def scholarship_group_query(group: Mapping[str, str], original_query: str) -> str:
-    if route_query(original_query).query_language == "tr":
+def scholarship_group_query(group: Mapping[str, str], original_query: str, *, language_hint: Optional[str] = None) -> str:
+    if route_query(original_query, language_hint=language_hint).query_language == "tr":
         return str(group.get("query_tr") or group["query"])
     return str(group["query"])
 
