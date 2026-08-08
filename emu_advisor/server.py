@@ -791,7 +791,7 @@ def _requires_admin_token(request: Request, *, configured_token: str) -> bool:
     if not configured_token:
         return False
     path = request.url.path.rstrip("/") or "/"
-    protected_exact = {"/admin", "/ask", "/metrics", "/metrics/modes", "/analytics", "/corpus/status"}
+    protected_exact = {"/ask", "/metrics", "/metrics/modes", "/analytics", "/corpus/status"}
     if path in protected_exact or path.startswith("/ask/"):
         return True
     if path == "/llm/status" and request.query_params.get("smoke", "").casefold() in {"1", "true", "yes"}:
