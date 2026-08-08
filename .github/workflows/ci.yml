@@ -13,11 +13,17 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements-dev.txt
-      - name: Install dependencies
+          cache-dependency-path: requirements-lock.txt
+      - name: Install pinned dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements-lock.txt
+      - name: Publication guard
+        run: python tools/publication_guard.py
+      - name: Dependency audit
+        run: |
+          python -m pip install pip-audit
+          pip-audit -r requirements-lock.txt
       - name: Syntax scan
         run: |
           python - <<'PY'
@@ -45,8 +51,10 @@ jobs:
           python -m emu_advisor.evaluation eval_sets/v1_gold.jsonl
           python -m emu_advisor.evaluation eval_sets/v1_hard.jsonl
           python -m emu_advisor.evaluation eval_sets/emu_gold_seed.jsonl
-      - name: Review status check
-        run: python -m emu_advisor.eval_review status eval_sets/v1_gold.jsonl eval_sets/v1_hard.jsonl eval_sets/emu_gold_seed.jsonl
+      - name: Verified gold review status
+        run: python -m emu_advisor.eval_review status eval_sets/v1_gold.jsonl
+      - name: Auxiliary evaluation status
+        run: python -m emu_advisor.eval_review status eval_sets/v1_hard.jsonl eval_sets/emu_gold_seed.jsonl
 
   browser-smoke:
     runs-on: ubuntu-latest
@@ -56,11 +64,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: requirements-dev.txt
-      - name: Install dependencies
+          cache-dependency-path: requirements-lock.txt
+      - name: Install pinned dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements-lock.txt
           python -m playwright install --with-deps chromium
       - name: Browser smoke
         run: python tools/browser_smoke.py --start-server
