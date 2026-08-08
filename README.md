@@ -1,161 +1,246 @@
-# EMU Advisor
+# EMUAdvisor
 
-Local-only prototype for answering Eastern Mediterranean University regulation questions from official cited sources.
+Local RAG assistant for answering Eastern Mediterranean University regulation questions from official cited sources.
 
-## Scope
+EMUAdvisor crawls official EMU regulation pages and linked PDFs, builds language-separated retrieval corpora, retrieves and reranks supporting evidence, and produces cited answers with refusal and clarification behavior when evidence is insufficient or the question falls outside the indexed regulation scope.
 
-EMU Advisor is a demo-first RAG assistant for EMU staff. It answers questions about official EMU rules and regulations from `mevzuat.emu.edu.tr` and official linked PDFs, routes English and Turkish questions to separate corpora, and refuses or asks for clarification when evidence is weak or out of scope.
+> **Independent project:** EMUAdvisor is research/software work and is not an official Eastern Mediterranean University administrative service. Its answers are informational and must not be treated as final university decisions.
 
-This is not a production system and does not provide official legal or administrative decisions. All generated crawl, index, and evaluation artifacts are local and ignored under `artifacts/`.
+## What this project demonstrates
 
-## Current Demo Status
+- end-to-end RAG ingestion over official HTML and PDF sources;
+- English/Turkish corpus routing and query understanding;
+- hybrid retrieval with structured table evidence and optional Qdrant storage;
+- extractive answers, optional local Ollama generation, and fallback behavior;
+- citations, refusal/clarification policies, and conflict-aware responses;
+- fixed-set evaluation, human-reviewed gold data, regression suites, and review tooling;
+- FastAPI APIs, local diagnostics, browser smoke testing, CI, and reproducible dependency snapshots.
 
-- Live corpus artifact: 8,714 chunks from 119 official sources, including 22 PDFs.
-- Structured evidence: table summaries, row-level table chunks, and derived salary facts for academic salary-scale comparisons.
-- Candidate evaluation set: 60 assistant-curated cases, pending human review.
-- Hard regression set: 50 assistant-curated table/broad-query cases in `eval_sets/v1_hard.jsonl`.
-- Provisional gold seed: 50 cases in `eval_sets/emu_gold_seed.jsonl`, converted from the comprehensive analysis doc and pending source binding/human review.
-- Latest extractive metrics on `v1_gold`: top-5 retrieval 100%, response accuracy 100%, rejection accuracy 100%, citation coverage 100%, p50 extractive latency 674 ms.
-- Latest hard metrics on `v1_hard`: top-5 retrieval 100%, response accuracy 100%, rejection accuracy 100%, citation coverage 100%, p50 extractive latency 468 ms.
-- Generated mode: local Ollama `qwen3:8b` is implemented and fallback-safe, but the bounded 2-second smoke metric run timed out on this machine.
+## Architecture
 
-See `docs/DEMO_METRICS_SNAPSHOT.md` for the tracked metrics summary and sample outputs.
-See `docs/BOARD_DEMO_READINESS.md` for the current board-demo readiness gate.
+```text
+Official EMU HTML/PDF sources
+          |
+          v
+ crawler -> parser/table extraction -> normalized chunks
+          |                             |
+          |                             v
+          |                    local or Qdrant index
+          |                             |
+          +-----------------------------+
+                                        v
+question -> language/query understanding -> hybrid retrieval
+                                        |
+                                        v
+                     evidence + answerability decision
+                         |                     |
+                         v                     v
+                 extractive answer       refuse/clarify
+                         |
+                         +---- optional local Ollama generation
+                                        |
+                                        v
+                              cited user response
+```
+
+## Evaluation snapshot
+
+The primary benchmark is `eval_sets/v1_gold.jsonl`, a **60-case human-reviewed and verified gold set** reviewed by the project author and university staff.
+
+Recorded extractive results on the fixed corpus snapshot:
+
+| Metric | `v1_gold` |
+|---|---:|
+| Cases | 60 |
+| Retrieval top-1 | 92.31% |
+| Retrieval top-3 | 98.08% |
+| Retrieval top-5 | 100.00% |
+| Response accuracy | 100.00% |
+| Rejection accuracy | 100.00% |
+| Clarification accuracy | 100.00% |
+| Citation coverage | 100.00% |
+| Extractive latency p50 | 674 ms |
+| Extractive latency p95 | 1,267 ms |
+
+These are local results on a fixed benchmark and corpus snapshot, **not production-service guarantees or universal model-quality claims**.
+
+Additional evaluation material is intentionally separated:
+
+- `eval_sets/v1_hard.jsonl`: 50-case hard regression suite focused on table/broad-query/refusal behavior;
+- `eval_sets/emu_gold_seed.jsonl`: provisional evaluation seed retained under its historical filename until it completes the same review process.
+
+See `docs/DEMO_METRICS_SNAPSHOT.md` for the full recorded snapshot and `PUBLICATION.md` for evaluation/publication terminology.
+
+## Corpus snapshot
+
+The recorded demo corpus contains:
+
+- 8,714 chunks from 119 official sources;
+- 22 linked official PDFs;
+- 3,878 English and 4,836 Turkish chunks;
+- structured table summaries, row-level table chunks, and derived table facts.
+
+Generated crawl/index artifacts are intentionally ignored and are not committed to the repository.
 
 ## Setup
+
+Python 3.12 is the CI reference environment.
+
+For the reproducible portfolio/demo environment:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
+python -m pip install --upgrade pip
+pip install -r requirements-lock.txt
 ```
+
+`requirements.txt` and `requirements-dev.txt` retain the broader dependency declarations; `requirements-lock.txt` records the exact tested snapshot used by CI.
 
 Optional local services:
 
-- Ollama for generated answers: `qwen3:8b`
-- Ollama embeddings: `qwen3-embedding:4b`
-- Qdrant for production-style vector storage
+- Ollama generation model: `qwen3:8b`;
+- Ollama embedding model: `qwen3-embedding:4b`;
+- Qdrant for service-backed vector storage.
 
-No external answering, embedding, reranking, or generation APIs are used.
+The answering/retrieval path does not require external hosted LLM APIs.
 
-## Build A Demo Corpus
-
-```powershell
-python -m emu_advisor.pipeline build --seed https://mevzuat.emu.edu.tr/content.htm --seed https://mevzuat.emu.edu.tr/Content-en.htm --out artifacts\demo_corpus\latest --max-pages 1000 --include-pdfs
-python -m emu_advisor.validate_jsonl artifacts\demo_corpus\latest\chunks.jsonl --kind chunk
-```
-
-The server automatically loads `artifacts/demo_corpus/latest/chunks.jsonl` when present and falls back to a tiny fixture corpus otherwise.
-
-## Evaluate
+## Build a local corpus
 
 ```powershell
-python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
-python -m emu_advisor.evaluation eval_sets\v1_hard.jsonl
-python -m emu_advisor.evaluation eval_sets\emu_gold_seed.jsonl
-python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\latest
-python -m emu_advisor.metrics run --cases eval_sets\v1_hard.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\hard_latest
-python -m emu_advisor.metrics run --all-modes --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\mode_comparison
-python -m emu_advisor.metrics run --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\metrics\latest_generated --include-generation --ollama-model qwen3:8b --ollama-timeout-s 2
+python -m emu_advisor.pipeline build `
+  --seed https://mevzuat.emu.edu.tr/content.htm `
+  --seed https://mevzuat.emu.edu.tr/Content-en.htm `
+  --out artifacts\demo_corpus\latest `
+  --max-pages 1000 `
+  --include-pdfs
+
+python -m emu_advisor.validate_jsonl `
+  artifacts\demo_corpus\latest\chunks.jsonl `
+  --kind chunk
 ```
 
-Metrics outputs are written under ignored `artifacts/metrics/` directories as `metrics.json`, `metrics.md`, `per_case.csv`, and `human_review.csv`. All-mode runs also write `comparison.json` and `comparison.md`.
+The application loads `artifacts/demo_corpus/latest/chunks.jsonl` when present and otherwise falls back to a small fixture corpus for development/testing.
 
-Human-review helpers:
-
-```powershell
-python -m emu_advisor.eval_review status eval_sets\v1_gold.jsonl eval_sets\v1_hard.jsonl eval_sets\emu_gold_seed.jsonl
-python -m emu_advisor.eval_review export-csv --cases eval_sets\v1_gold.jsonl --out artifacts\review\v1_gold_review.csv
-python -m emu_advisor.eval_review bind-seed --cases eval_sets\emu_gold_seed.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --out artifacts\review\emu_gold_seed.bound.jsonl
-```
-
-Local benchmark probes:
-
-```powershell
-python -m emu_advisor.benchmark embedding --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --embedding hash
-python -m emu_advisor.benchmark generation --cases eval_sets\v1_gold.jsonl --chunks artifacts\demo_corpus\latest\chunks.jsonl --model qwen3:8b --timeout-s 30 --limit 5
-```
-
-## Run The Demo UI
+## Run the application
 
 ```powershell
 python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000` for the landing page, then **Open regulation assistant** to reach the chat UI.
+Then open:
 
-Open `http://127.0.0.1:8000/admin?view=user` for the staff-facing chat (User mode).
+- `http://127.0.0.1:8000` for the landing page;
+- `http://127.0.0.1:8000/admin?view=user` for the staff-facing chat;
+- `http://127.0.0.1:8000/admin?view=diagnostics` for local diagnostics.
 
-Open `http://127.0.0.1:8000/admin?view=diagnostics` for the local diagnostics console (metrics, `/ask`, raw hits).
+### Admin authentication
 
-If `EMU_ADVISOR_ADMIN_TOKEN` is set, debug/admin endpoints require `Authorization: Bearer <token>` or `X-EMU-Admin-Token: <token>`. The browser admin console can be opened once with `http://127.0.0.1:8000/admin?admin_token=<token>`; the token is kept in browser session storage for same-session admin calls.
+Protected profiles use `EMU_ADVISOR_ADMIN_TOKEN`.
 
-API endpoints:
+```powershell
+$env:EMU_ADVISOR_PROFILE="production"
+$env:EMU_ADVISOR_ADMIN_TOKEN="<local-admin-token>"
+```
+
+API clients send the token through either:
+
+```text
+Authorization: Bearer <token>
+```
+
+or:
+
+```text
+X-EMU-Admin-Token: <token>
+```
+
+The browser diagnostics view provides a password-style token field. The value is stored only in the current tab's `sessionStorage` and sent through the `Authorization` header. **Admin tokens are not accepted from URL query parameters.**
+
+See `SECURITY.md` for the security boundary and deployment cautions.
+
+## API surface
+
+Public/user path:
 
 - `GET /health`
 - `GET /whoami`
+- `POST /chat`
+- `POST /chat/stream`
+
+Diagnostics/admin path:
+
 - `GET /metrics`
 - `GET /metrics/modes`
 - `GET /analytics`
 - `GET /corpus/status`
 - `GET /llm/status`
-- `POST /chat`
 - `POST /ask`
 - `POST /ask/stream`
 
-`POST /chat` is the sanitized public endpoint. `POST /ask` supports `answer_style=extractive|generated|both` and returns full diagnostics for the admin console. Generated mode falls back to extractive when the local Ollama model is unavailable or a generation call fails.
+`POST /chat` returns the sanitized user-facing response. `POST /ask` exposes richer retrieval/generation diagnostics for the local admin console.
 
-## Qdrant Backend
+## Qdrant backend
 
-Local development defaults to the in-memory store. Production profile requires Qdrant.
+Development defaults to the local in-memory store. A production profile requires Qdrant.
 
 ```powershell
 $env:EMU_ADVISOR_VECTOR_BACKEND="qdrant"
 $env:EMU_ADVISOR_QDRANT_URL="http://localhost:6333"
 $env:EMU_ADVISOR_QDRANT_COLLECTION="emu_regulations"
-python -m emu_advisor.index build --chunks artifacts\demo_corpus\latest\chunks.jsonl --backend qdrant --collection emu_regulations
+
+python -m emu_advisor.index build `
+  --chunks artifacts\demo_corpus\latest\chunks.jsonl `
+  --backend qdrant `
+  --collection emu_regulations
 ```
 
-For an embedded local Qdrant index, useful when Docker or a Qdrant server is unavailable:
+Embedded local Qdrant can also be used for development when a service is unavailable.
+
+## Evaluation and review
+
+Run the verified gold set:
 
 ```powershell
-$env:EMU_ADVISOR_VECTOR_BACKEND="qdrant"
-$env:EMU_ADVISOR_QDRANT_PATH="artifacts\qdrant\latest"
-python -m emu_advisor.index build --chunks artifacts\demo_corpus\latest\chunks.jsonl --backend qdrant --collection emu_regulations --qdrant-path artifacts\qdrant\latest
+python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
+python -m emu_advisor.eval_review status eval_sets\v1_gold.jsonl
 ```
 
-For production profile:
+Run auxiliary regression/evaluation material:
 
 ```powershell
-$env:EMU_ADVISOR_PROFILE="production"
-$env:EMU_ADVISOR_ADMIN_TOKEN="<local-admin-token>"
-python -m uvicorn emu_advisor.server:app --host 127.0.0.1 --port 8000
+python -m emu_advisor.evaluation eval_sets\v1_hard.jsonl
+python -m emu_advisor.evaluation eval_sets\emu_gold_seed.jsonl
+python -m emu_advisor.eval_review status eval_sets\v1_hard.jsonl eval_sets\emu_gold_seed.jsonl
 ```
 
-If Qdrant is unavailable in production profile, startup fails. In development/test profile, Qdrant falls back to the local store and `/corpus/status` reports the warning.
-
-Check index connectivity:
-
-```powershell
-python -m emu_advisor.index health --backend qdrant --collection emu_regulations --qdrant-url http://localhost:6333
-```
+Metrics runs write ignored artifacts such as `metrics.json`, `per_case.csv`, and review CSVs under `artifacts/`.
 
 ## Verification
 
+The GitHub Actions pipeline uses the pinned dependency snapshot and requires both core verification and the browser smoke test.
+
+Equivalent local checks:
+
 ```powershell
+python tools\publication_guard.py
 python -m unittest discover -s tests
-python -m emu_advisor.validate_jsonl artifacts\demo_corpus\latest\chunks.jsonl --kind chunk
 python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
 python -m emu_advisor.evaluation eval_sets\v1_hard.jsonl
-python -c "from emu_advisor.server import app; print(app.title)"
-python tools\browser_smoke.py --start-server --skip-if-unavailable
-python -m emu_advisor.readiness --out docs\BOARD_DEMO_READINESS.md
+python -m emu_advisor.evaluation eval_sets\emu_gold_seed.jsonl
+python tools\browser_smoke.py --start-server
 ```
 
-## Known Limits
+CI additionally audits the pinned Python dependencies with `pip-audit`.
 
-- The 60-case set and 50-case hard set are assistant-curated and must be manually reviewed before calling either a human-reviewed gold set.
-- Generated answers are optional; the latest bounded smoke run detected `qwen3:8b` but timed out at 2 seconds, so extractive fallback is the validated continuity path.
-- Broad scholarship prompts run deterministic grouped subqueries; p50 is still under 1 second, but p95 can be higher than direct extractive questions.
-- Qdrant adapter and CLI are implemented with mocked unit coverage and an embedded local Qdrant index build; no Docker/live Qdrant server run has been validated in this environment.
-- Metrics are local demo metrics, not production service guarantees.
+## Known limits
+
+- The recorded metrics describe a fixed local evaluation/corpus snapshot, not production availability.
+- `v1_gold` is verified; `v1_hard` and `emu_gold_seed` retain separate review status and should not be silently merged into the gold claim.
+- Generated answers are optional and fallback-safe; the recorded bounded `qwen3:8b` smoke run timed out at a 2-second generation limit.
+- A service-backed Qdrant production deployment and target production hardware have not yet been validated in the recorded environment.
+- The repository is intended for local research, evaluation, and demonstration; public Internet deployment requires an independent security/deployment review.
+
+## License
+
+MIT. See `LICENSE`.
