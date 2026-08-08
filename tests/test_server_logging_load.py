@@ -123,13 +123,19 @@ class ServerTests(unittest.TestCase):
         )
         denied_metrics = client.get("/metrics")
         allowed_metrics = client.get("/metrics", headers={"X-EMU-Admin-Token": "secret"})
-        allowed_admin = client.get("/admin?admin_token=secret")
+        query_token_ask = client.post(
+            "/ask",
+            params={"admin_token": "secret"},
+            json={"question": "What is the attendance requirement?", "answer_style": "extractive"},
+        )
+        allowed_admin = client.get("/admin")
 
         self.assertEqual(public_chat.status_code, 200)
         self.assertEqual(denied_ask.status_code, 401)
         self.assertEqual(allowed_ask.status_code, 200)
         self.assertEqual(denied_metrics.status_code, 401)
         self.assertEqual(allowed_metrics.status_code, 200)
+        self.assertEqual(query_token_ask.status_code, 401)
         self.assertEqual(allowed_admin.status_code, 200)
 
     def test_production_profile_requires_admin_token(self) -> None:
