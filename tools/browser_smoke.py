@@ -106,6 +106,7 @@ def exercise_user_chat(page) -> None:
     question = page.locator("#user-question")
     question.fill("What is the attendance requirement?")
     send = page.locator("#user-send")
+    send.scroll_into_view_if_needed()
     page_y_before = page.evaluate("window.scrollY")
     send.click()
     page.locator(".answer-state").first.wait_for(timeout=15000)

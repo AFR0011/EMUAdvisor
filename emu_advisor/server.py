@@ -784,9 +784,6 @@ def _provided_admin_token(request: Request) -> Optional[str]:
     header_token = request.headers.get("x-emu-admin-token")
     if header_token:
         return header_token.strip()
-    query_token = request.query_params.get("admin_token")
-    if query_token:
-        return query_token.strip()
     return None
 
 
