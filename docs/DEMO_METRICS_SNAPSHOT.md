@@ -1,6 +1,6 @@
 # Demo Metrics Snapshot
 
-Last updated: 2026-05-22
+Last updated: 2026-08-08
 
 ## Corpus Snapshot
 
@@ -13,11 +13,13 @@ Last updated: 2026-05-22
 - Active artifact: `artifacts/demo_corpus/latest/chunks.jsonl` (ignored).
 - Embedded Qdrant index: `artifacts/qdrant/latest` (ignored), collection `emu_regulations`.
 
-## Evaluation Snapshot
+## Verified Gold Evaluation
 
 Evaluation set: `eval_sets/v1_gold.jsonl`
 
-Review status: `assistant_curated_pending_human_review`
+Review status: `human_reviewed_verified`
+
+The 60-case gold set has been reviewed and verified by the project author and university staff. The metrics below are results on this fixed local evaluation set and corpus snapshot; they are not production-service guarantees.
 
 | Metric | Value |
 |---|---:|
@@ -36,7 +38,11 @@ Review status: `assistant_curated_pending_human_review`
 | Extractive latency p95 | 1,267 ms |
 | Failed cases | 0 |
 
-Hard regression set: `eval_sets/v1_hard.jsonl`
+## Hard Regression Suite
+
+Evaluation set: `eval_sets/v1_hard.jsonl`
+
+This 50-case suite targets difficult table/broad-query behavior and regressions. It is kept separate from the verified gold benchmark.
 
 | Metric | Value |
 |---|---:|
@@ -54,19 +60,19 @@ Hard regression set: `eval_sets/v1_hard.jsonl`
 | Extractive latency p95 | 2,867 ms |
 | Failed cases | 0 |
 
-Generated mode status: local Ollama service and `qwen3:8b` model were detected, but the bounded smoke generation with `--ollama-timeout-s 2` timed out. Generated metrics are therefore marked unavailable in `artifacts/metrics/latest_generated/metrics.json`; extractive and grouped answers remain the validated demo path.
+## Generated Mode
+
+The local Ollama service and `qwen3:8b` model were detected, but the bounded smoke generation with `--ollama-timeout-s 2` timed out on the recorded machine. Generated metrics are therefore unavailable in that snapshot; extractive and grouped answers remain the validated continuity path.
 
 ## Failure Analysis
 
-- Gold failed cases: 0.
+- Verified-gold failed cases: 0.
 - Hard-regression failed cases: 0.
-- Expected source missing from top-5: 0 in both sets.
-- Missing citation: 0 in both sets.
-- False refusal: 0 in both sets.
-- False answer on refusal cases: 0 in both sets.
-- Missing clarification: 0 in the gold set.
-
-Worst failed cases in the latest runs: none.
+- Expected source missing from top-5: 0 in both recorded sets.
+- Missing citation: 0 in both recorded sets.
+- False refusal: 0 in both recorded sets.
+- False answer on refusal cases: 0 in both recorded sets.
+- Missing clarification: 0 in the verified gold set.
 
 ## Sample Outputs
 
@@ -84,7 +90,7 @@ Mode: `answer`, answer type `table`. The top evidence comes from the Turkish sch
 
 Question: `Araştırma görevlisi burs kuralları farklı veya çelişkili mi?`
 
-Mode: `show_conflict`, answer type `direct`. Retrieval remains within the detected-language corpus and should cite the research-assistant rules rather than only the general scholarship table.
+Mode: `show_conflict`, answer type `direct`. Retrieval remains within the detected-language corpus and cites the research-assistant rules rather than only the general scholarship table.
 
 Question: `Bugün kampüste hangi burs etkinlikleri var?`
 
@@ -92,8 +98,8 @@ Mode: `refuse`. The answer refuses because campus events are outside the V1 offi
 
 ## Known Limits
 
-- This snapshot is a publishable demo snapshot, not a human-reviewed quality claim.
-- The 60-case candidate set and 50-case hard set are assistant-curated and still need manual labeling before being called gold-standard evaluations.
+- The verified 60-case `v1_gold` benchmark is human-reviewed; `v1_hard` remains a regression suite and `emu_gold_seed` remains provisional unless separately documented as reviewed.
+- These are fixed local evaluation results, not production availability or universal-quality claims.
 - Broad scholarship prompts run several deterministic subqueries; p50 remains under 1 second, but p95 is higher than direct extractive queries.
-- Generated mode is implemented and fallback-safe, but `qwen3:8b` timed out under a 2-second smoke limit on this machine.
-- Qdrant has unit coverage, CLI support, and a validated embedded local Qdrant index at `artifacts/qdrant/latest`; a Docker/live Qdrant service deployment is still not validated here.
+- Generated mode is implemented and fallback-safe, but `qwen3:8b` timed out under the recorded 2-second smoke limit.
+- Qdrant has unit coverage, CLI support, and a validated embedded local Qdrant index; a Docker/live Qdrant service deployment is still not validated in the recorded environment.

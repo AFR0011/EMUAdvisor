@@ -1,18 +1,29 @@
 /** Shared helpers for EMU Regulation Assistant UI. */
 (function (global) {
   const THEME_KEY = "emu_theme";
+  const ADMIN_TOKEN_KEY = "emu_admin_token";
   const THEMES = new Set(["light", "dark"]);
 
-  const queryToken = new URLSearchParams(window.location.search).get("admin_token");
-  if (queryToken) {
-    window.sessionStorage.setItem("emu_admin_token", queryToken);
-    const url = new URL(window.location.href);
-    url.searchParams.delete("admin_token");
-    window.history.replaceState({}, document.title, url.pathname + url.search);
+  function getAdminToken() {
+    return window.sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
+  }
+
+  function setAdminToken(token) {
+    const normalized = String(token || "").trim();
+    if (normalized) {
+      window.sessionStorage.setItem(ADMIN_TOKEN_KEY, normalized);
+    } else {
+      window.sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    }
+    return normalized;
+  }
+
+  function clearAdminToken() {
+    window.sessionStorage.removeItem(ADMIN_TOKEN_KEY);
   }
 
   function authedFetch(url, options = {}) {
-    const token = window.sessionStorage.getItem("emu_admin_token");
+    const token = getAdminToken();
     const headers = new Headers(options.headers || {});
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
@@ -147,6 +158,9 @@
     escapeHtml,
     escapeAttr,
     formatPercent,
+    getAdminToken,
+    setAdminToken,
+    clearAdminToken,
     getTheme,
     getViewMode,
     setTheme,

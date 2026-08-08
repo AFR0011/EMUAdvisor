@@ -23,9 +23,10 @@ def build_readiness_report(root: Path = ROOT) -> Dict[str, Any]:
         _file_check(root / "docs" / "EMUAdvisor Full Analysis.md", "full analysis", root=root),
         _file_check(root / "docs" / "DEMO_STORYBOARD.md", "demo storyboard", root=root),
         _file_check(root / "docs" / "PUBLICATION_CHECKLIST.md", "publication checklist", root=root),
-        _file_check(root / "eval_sets" / "v1_gold.jsonl", "candidate evaluation set", root=root),
+        _file_check(root / "eval_sets" / "v1_gold.jsonl", "verified gold evaluation set", root=root),
         _file_check(root / "eval_sets" / "v1_hard.jsonl", "hard regression set", root=root),
     ]
+
     metrics_path = root / "artifacts" / "metrics" / "latest" / "metrics.json"
     metrics = load_latest_metrics(metrics_path)
     if metrics.get("available"):
@@ -38,20 +39,27 @@ def build_readiness_report(root: Path = ROOT) -> Dict[str, Any]:
         )
     else:
         checks.append({"name": "latest metrics artifact", "status": "partial", "detail": "not present in artifacts"})
-    review = summarize_review_status(
-        [
-            root / "eval_sets" / "v1_gold.jsonl",
-            root / "eval_sets" / "v1_hard.jsonl",
-            root / "eval_sets" / "emu_gold_seed.jsonl",
-        ]
+
+    gold_review = summarize_review_status([root / "eval_sets" / "v1_gold.jsonl"])
+    checks.append(
+        {
+            "name": "verified gold review status",
+            "status": "blocked" if gold_review["pending_cases"] else "pass",
+            "detail": f"{gold_review['total_cases']} cases; {gold_review['pending_cases']} pending",
+        }
+    )
+
+    auxiliary_review = summarize_review_status(
+        [root / "eval_sets" / "v1_hard.jsonl", root / "eval_sets" / "emu_gold_seed.jsonl"]
     )
     checks.append(
         {
-            "name": "human-reviewed gold status",
-            "status": "blocked" if review["pending_cases"] else "pass",
-            "detail": f"{review['pending_cases']} cases still pending review",
+            "name": "auxiliary evaluation review status",
+            "status": "partial" if auxiliary_review["pending_cases"] else "pass",
+            "detail": f"{auxiliary_review['total_cases']} cases; {auxiliary_review['pending_cases']} pending",
         }
     )
+
     checks.append(
         {
             "name": "production admin token",
@@ -78,7 +86,7 @@ def build_readiness_report(root: Path = ROOT) -> Dict[str, Any]:
     return {
         "status": status,
         "checks": checks,
-        "review": review,
+        "review": {"gold": gold_review, "auxiliary": auxiliary_review},
         "analytics": analytics,
         "summary": _status_sentence(status),
     }
@@ -106,7 +114,7 @@ def write_markdown_report(report: Dict[str, Any], out: Path) -> None:
             "## Non-Negotiable Limits",
             "",
             "- This is a board-demo readiness report, not a production approval.",
-            "- Human-reviewed gold metrics remain blocked until manual labels are complete.",
+            "- `v1_gold` is the human-reviewed verified gold set; auxiliary regression/seed sets have separate review status.",
             "- Production-style deployment remains blocked until service-backed Qdrant and target hardware are validated.",
             "- Generated mode remains extractive-first unless local model latency and answer quality are characterized.",
         ]

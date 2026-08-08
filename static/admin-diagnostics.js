@@ -1,6 +1,14 @@
 /** Diagnostics mode: /ask, metrics, corpus status. */
 (function () {
-  const { authedFetch, readableError, escapeHtml, formatPercent } = window.EmuShared;
+  const {
+    authedFetch,
+    readableError,
+    escapeHtml,
+    formatPercent,
+    getAdminToken,
+    setAdminToken,
+    clearAdminToken,
+  } = window.EmuShared;
 
   const askButton = document.querySelector("#diag-ask");
   const question = document.querySelector("#diag-question");
@@ -21,10 +29,46 @@
   const corpusDetails = document.querySelector("#corpus-details");
   const modeDetails = document.querySelector("#mode-details");
   const analyticsDetails = document.querySelector("#analytics-details");
+  const adminTokenInput = document.querySelector("#admin-token-input");
+  const adminTokenSave = document.querySelector("#admin-token-save");
+  const adminTokenClear = document.querySelector("#admin-token-clear");
+  const adminTokenStatus = document.querySelector("#admin-token-status");
 
   if (!askButton) {
     return;
   }
+
+  function updateAdminTokenStatus(message) {
+    if (!adminTokenStatus) {
+      return;
+    }
+    adminTokenStatus.textContent = message || (getAdminToken()
+      ? "Admin token is stored for this tab only."
+      : "No admin token stored for this tab.");
+  }
+
+  adminTokenSave?.addEventListener("click", () => {
+    const token = setAdminToken(adminTokenInput?.value || "");
+    if (adminTokenInput) {
+      adminTokenInput.value = "";
+    }
+    updateAdminTokenStatus(token
+      ? "Admin token stored for this tab. Protected requests will use the Authorization header."
+      : "No token was entered; stored admin authentication is cleared.");
+    if (window.EmuShared.getViewMode() === "diagnostics") {
+      loadMetrics();
+    }
+  });
+
+  adminTokenClear?.addEventListener("click", () => {
+    clearAdminToken();
+    if (adminTokenInput) {
+      adminTokenInput.value = "";
+    }
+    updateAdminTokenStatus("Admin token cleared from this tab.");
+  });
+
+  updateAdminTokenStatus();
 
   document.querySelectorAll("[data-view-tab]").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -109,6 +153,13 @@
         authedFetch("/metrics/modes"),
         authedFetch("/analytics"),
       ]);
+      const protectedResponses = [corpusResponse, metricsResponse, modesResponse, analyticsResponse];
+      if (protectedResponses.some((response) => response.status === 401)) {
+        throw new Error("Admin authentication required. Enter the local admin token above.");
+      }
+      if (protectedResponses.some((response) => !response.ok)) {
+        throw new Error("Diagnostics data could not be loaded.");
+      }
       const corpus = await corpusResponse.json();
       const metrics = await metricsResponse.json();
       const modes = await modesResponse.json();
@@ -116,8 +167,7 @@
       corpusCount.textContent = corpus.chunk_count ?? "-";
       top5.textContent = formatPercent(metrics.retrieval_top5);
       reject.textContent = formatPercent(metrics.rejection_accuracy);
-      latency.textContent =
-        metrics.extractive_latency_p50_ms == null ? "-" : `${metrics.extractive_latency_p50_ms}ms`;
+      latency.textContent = metrics.extractive_latency_p50_ms == null ? "-" : `${metrics.extractive_latency_p50_ms}ms`;
       auditCount.textContent = analytics.events ?? "-";
       corpusDetails.innerHTML = renderDetails({
         source: corpus.source,
@@ -139,13 +189,17 @@
         latency_p95_ms: analytics.latency_p95_ms,
       });
       modeDetails.innerHTML = renderModes(modes);
-    } catch {
+    } catch (error) {
       corpusCount.textContent = "-";
       auditCount.textContent = "-";
+      statusEl.textContent = error?.message || "Diagnostics unavailable";
     }
 
     try {
       const llmResponse = await authedFetch("/llm/status");
+      if (!llmResponse.ok) {
+        throw new Error("LLM status unavailable");
+      }
       const llm = await llmResponse.json();
       llmStatus.textContent = llm.model_available ? "available" : "fallback";
       llmStatus.classList.toggle("warn", !llm.model_available);
@@ -160,23 +214,13 @@
       return "";
     }
     return groups
-      .map(
-        (group) => `
-        <article class="evidence-group">
-          <h3>${escapeHtml(group.title)}</h3>
-          <p>${escapeHtml(group.summary)}</p>
-        </article>
-      `
-      )
+      .map((group) => `\n        <article class="evidence-group">\n          <h3>${escapeHtml(group.title)}</h3>\n          <p>${escapeHtml(group.summary)}</p>\n        </article>\n      `)
       .join("");
   }
 
   function renderDetails(values) {
     return Object.entries(values)
-      .map(
-        ([key, value]) =>
-          `<div><dt>${escapeHtml(key.replaceAll("_", " "))}</dt><dd>${escapeHtml(value ?? "-")}</dd></div>`
-      )
+      .map(([key, value]) => `<div><dt>${escapeHtml(key.replaceAll("_", " "))}</dt><dd>${escapeHtml(value ?? "-")}</dd></div>`)
       .join("");
   }
 
@@ -186,18 +230,7 @@
       .map(([name, preset]) => {
         const latest = payload.results?.[name] || {};
         const score = latest.total_score == null ? "-" : Number(latest.total_score).toFixed(2);
-        return `
-        <article class="mode-card">
-          <h3>${escapeHtml(name)}</h3>
-          <p>${escapeHtml(preset.local_llm_label || "")}</p>
-          <dl>
-            <div><dt>fanout</dt><dd>${escapeHtml(String(preset.retrieval_fanout))}</dd></div>
-            <div><dt>rerank</dt><dd>${preset.rerank_enabled ? "on" : "off"}</dd></div>
-            <div><dt>context</dt><dd>${escapeHtml(String(preset.max_context_chunks))}</dd></div>
-            <div><dt>score</dt><dd>${score}</dd></div>
-          </dl>
-        </article>
-      `;
+        return `\n        <article class="mode-card">\n          <h3>${escapeHtml(name)}</h3>\n          <p>${escapeHtml(preset.local_llm_label || "")}</p>\n          <dl>\n            <div><dt>fanout</dt><dd>${escapeHtml(String(preset.retrieval_fanout))}</dd></div>\n            <div><dt>rerank</dt><dd>${preset.rerank_enabled ? "on" : "off"}</dd></div>\n            <div><dt>context</dt><dd>${escapeHtml(String(preset.max_context_chunks))}</dd></div>\n            <div><dt>score</dt><dd>${score}</dd></div>\n          </dl>\n        </article>\n      `;
       })
       .join("");
   }
