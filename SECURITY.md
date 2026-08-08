@@ -8,7 +8,9 @@ The repository is intended for local development, evaluation, and demonstration.
 
 ## Admin authentication
 
-When `EMU_ADVISOR_PROFILE=production`, `EMU_ADVISOR_ADMIN_TOKEN` is required. Admin credentials must be supplied through request headers.
+When `EMU_ADVISOR_PROFILE=production`, `EMU_ADVISOR_ADMIN_TOKEN` is required for protected diagnostic/data APIs. Admin credentials must be supplied through request headers.
+
+The static `/admin` application shell remains reachable so a user can enter the credential locally; loading that HTML does not grant access to protected metrics, retrieval diagnostics, analytics, corpus status, or `/ask` responses.
 
 Tokens must **not** be placed in URLs, query parameters, source files, screenshots, logs, or committed environment files. Query parameters are not an authentication mechanism.
 
