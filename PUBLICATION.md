@@ -7,10 +7,11 @@ EMUAdvisor may be published by the repository owner. The source code is released
 - [x] Publishing rights confirmed by the repository owner.
 - [x] MIT license added.
 - [x] `eval_sets/v1_gold.jsonl` has been reviewed and verified by the project author and university staff.
-- [ ] Keep `eval_sets/emu_gold_seed.jsonl` described as provisional unless it completes the same review process.
-- [ ] Confirm that only publicly accessible EMU regulations are referenced or retrieved.
-- [ ] Confirm generated crawl, index, audit, review, and conversation artifacts remain ignored.
-- [ ] Confirm no secrets or real administrative credentials exist in the current tree or Git history.
+- [x] Browser/admin authentication no longer accepts credentials from URL query parameters; protected requests use headers and the browser UI stores credentials only in tab-scoped session storage.
+- [x] `eval_sets/emu_gold_seed.jsonl` remains explicitly described as provisional unless it completes the same review process.
+- [x] Generated crawl, index, audit, review, and conversation artifacts remain outside the committed public-release workflow.
+- [x] Pinned Python dependencies and a dependency audit are part of CI.
+- [ ] Confirm no secrets or non-public university material exist in Git history before changing repository visibility.
 - [ ] Run the required GitHub Actions core and browser-smoke jobs successfully on the final publication branch.
 - [x] Keep the README disclaimer that this is independent research software, not an official EMU administrative service.
 
