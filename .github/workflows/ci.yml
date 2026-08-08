@@ -12,6 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -48,16 +50,17 @@ jobs:
 
   browser-smoke:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-dev.txt
-          python -m playwright install chromium
-      - name: Optional browser smoke
-        run: python tools/browser_smoke.py --start-server --skip-if-unavailable
+          python -m playwright install --with-deps chromium
+      - name: Browser smoke
+        run: python tools/browser_smoke.py --start-server
