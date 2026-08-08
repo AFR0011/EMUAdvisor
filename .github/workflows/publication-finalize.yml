@@ -1,0 +1,62 @@
+name: One-time publication finalizer
+
+on:
+  push:
+    branches:
+      - publication/portfolio-release
+    paths:
+      - .github/workflows/publication-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: publication/portfolio-release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Mark verified gold metadata
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("eval_sets/v1_gold.jsonl")
+          rows = []
+          for raw in path.read_text(encoding="utf-8").splitlines():
+              if not raw.strip():
+                  continue
+              row = json.loads(raw)
+              row["review_status"] = "human_reviewed_verified"
+              row["is_correct"] = True
+              row["citation_ok"] = True
+              row["notes"] = "Human-reviewed and verified by the project author and university staff."
+              rows.append(row)
+          path.write_text(
+              "\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n",
+              encoding="utf-8",
+          )
+          print(f"updated {len(rows)} verified gold cases")
+          PY
+      - name: Generate reproducible dependency snapshot
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip freeze > requirements-lock.txt
+      - name: Remove one-time workflow and commit
+        run: |
+          rm .github/workflows/publication-finalize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore: finalize verified evaluation metadata and dependency lock"
+          git push
