@@ -34,17 +34,6 @@
           <span>Informational, not a final decision</span>
         </div>
 
-        <!-- <div class="user-toolbar">
-          <button id="history-btn" type="button" title="View session history">History</button>
-          <button id="export-btn" type="button" title="Export chat">Export</button>
-          <select id="export-format" aria-label="Export format">
-            <option value="markdown">Markdown</option>
-            <option value="html">HTML</option>
-          </select>
-          <button id="new-session-btn" type="button">New session</button>
-          <button id="advanced-toggle" type="button" aria-expanded="false" aria-controls="advanced-panel">Advanced</button>
-        </div> -->
-
         <div id="advanced-panel" class="advanced-panel" hidden>
           <label for="session-id">Session ID</label>
           <input type="text" id="session-id" value="user-ui" readonly />
@@ -64,11 +53,7 @@
 
           <form id="chat-form" class="composer" aria-describedby="composer-help">
             <label class="sr-only" for="user-question">Question</label>
-            <textarea
-              id="user-question"
-              rows="3"
-              placeholder="Ask about an EMU regulation..."
-            >What is the attendance requirement?</textarea>
+            <textarea id="user-question" rows="3" placeholder="Ask about an EMU regulation...">What is the attendance requirement?</textarea>
             <div class="composer-actions">
               <button id="user-send" type="submit">Send</button>
             </div>
@@ -81,12 +66,22 @@
           <button id="close-history-btn" type="button">Close</button>
         </aside>
 
-        <p class="disclaimer">
-          This demo is informational only and does not provide a final official university decision.
-        </p>
+        <p class="disclaimer">This demo is informational only and does not provide a final official university decision.</p>
       </section>
 
       <section id="diagnostics-panel" class="diagnostics-panel" aria-label="Diagnostics console" hidden>
+        <section class="panel" aria-labelledby="admin-auth-heading">
+          <h2 id="admin-auth-heading">Admin authentication</h2>
+          <p>For protected local/production profiles, enter the admin token here. It is stored only in this tab's session storage and sent in the <code>Authorization</code> header. Tokens are never accepted from the page URL.</p>
+          <div class="controls">
+            <label class="sr-only" for="admin-token-input">Admin token</label>
+            <input id="admin-token-input" type="password" autocomplete="off" placeholder="Admin token" />
+            <button id="admin-token-save" type="button">Use token</button>
+            <button id="admin-token-clear" type="button">Clear token</button>
+          </div>
+          <p id="admin-token-status" role="status">No admin token stored for this tab.</p>
+        </section>
+
         <section class="panel diag-ask-panel">
           <label for="diag-question">Question</label>
           <textarea id="diag-question" rows="4">What is the attendance requirement?</textarea>
