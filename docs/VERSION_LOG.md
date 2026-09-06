@@ -124,4 +124,4 @@ Use this log for meaningful project milestones only.
 - Historical percentages in earlier entries are retained only as legacy automated proxy records; they are not semantic answer-quality or current presentation evidence.
 - Presentation, publication, release, deployment, and production-readiness remain blocked.
 - Initial independent TEST failed because three historical caveats followed the claims they qualified; a bounded documentation repair moved the caveats ahead of those claims.
-- Fresh independent TEST passed the repaired snapshot with residual risks. EMU-B001 closed as `COMPLETE_WITH_RISKS`; remote CI, live/artifact-backed reproduction, human review, rights, history-aware secret review, and Internet-grade deployment security remain gated.
+- Fresh independent TEST passed the repaired snapshot with residual risks. EMU-B001 closed as `COMPLETE_WITH_RISKS`; both remote CI matrices passed for commit `9a717d0`, while live/artifact-backed reproduction, human review, rights, history-aware secret review, and Internet-grade deployment security remain gated.

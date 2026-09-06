@@ -51,3 +51,10 @@ Initialized: 2026-09-05
 - Preserved the transient browser-smoke timeout and Starlette/httpx deprecation warning as maintenance risks; two subsequent browser-smoke passes provide bounded local evidence, not a reliability guarantee.
 - Closed the cycle as `COMPLETE_WITH_RISKS`; benchmark, presentation, publication, release, deployment, merge, and production-readiness actions remain blocked.
 - The first closure audit returned `FAIL` because `DEV_STATE.md` replaced the canonical batch ID with a descriptive closed value while `BLUEPRINT.md` retained `EMU-B001`; docs-QA restored the exact batch ID without changing the closed cycle status, and the rerun returned `PASS` with no errors or warnings.
+
+## 2026-09-06 - Commit, PR, and remote CI evidence
+
+- Committed the closed batch as `9a717d0` and pushed `remediation/evidence-security-portability` without rewriting history or changing the repository name.
+- Opened review PR #2 against `main`; no merge, release, deployment, or publication action was taken.
+- GitHub Actions runs `34011634890` and `34011648717` both passed Ubuntu core, Windows core, and browser smoke.
+- Remote CI closes the platform-run gate for this commit; the human, live-source, artifact, rights, history-review, identity, and deployment gates remain open.

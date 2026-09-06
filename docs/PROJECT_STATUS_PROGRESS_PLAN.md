@@ -14,8 +14,9 @@ EMUAdvisor has an active local software implementation and a substantial automat
 - Exact-host HTTPS redirect validation and non-laundered fixture provenance.
 - Platform-aware Python lock and Windows/Ubuntu Python 3.12 CI design.
 
-Local verification passed, including a fresh Windows Python 3.12 environment. Remote Ubuntu CI and
-the live/artifact/human/security gates below remain future actions.
+Local verification passed, including a fresh Windows Python 3.12 environment. Both GitHub Actions
+run sets passed Ubuntu core, Windows core, and browser smoke. The live/artifact/human/security gates
+below remain future actions.
 
 ## Next milestones after EMU-B001
 

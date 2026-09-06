@@ -46,8 +46,11 @@ documentation-ordering `FAIL` was repaired and retested. Syntax, focused/full te
 validation, review status, publication guard, browser smoke, Windows clean installation, dependency
 audit, protected-input comparison, immutable CI refs, and tracked-tree credential scan passed.
 
-Remote Ubuntu CI, live crawling, artifact-backed local services, immutable-run reproduction,
-history-aware secret review, human adjudication, source-content rights, and Internet-grade identity
+Commit `9a717d0` is available in review PR #2. GitHub Actions runs `34011634890` and `34011648717`
+both passed Ubuntu core, Windows core, and browser smoke.
+
+Live crawling, artifact-backed local services, immutable-run reproduction, history-aware secret
+review, human adjudication, source-content rights, and Internet-grade identity
 remain unverified or deferred. See `QA_REPORT.md` and `RISK_REGISTER.md`.
 
 ## Protected local data

@@ -36,6 +36,7 @@ Initialized: 2026-09-05
 - Dependency audit: no known vulnerabilities after `pypdf==6.17.0` update.
 - Protected-input comparison: all 60 `v1_gold` records preserved content/order and changed only the four authorized provenance/adjudication fields; other protected paths have no diff.
 - CI/source checks: Windows/Ubuntu Python 3.12 matrix and immutable official Action SHAs verified; tracked-tree credential scan found no matches.
+- Remote CI: GitHub Actions runs `34011634890` and `34011648717` passed Ubuntu core, Windows core, and browser smoke for commit `9a717d0` / PR #2.
 
 ## Bootstrap validation
 
@@ -51,13 +52,12 @@ Initialized: 2026-09-05
 | Expected-evidence citations | Focused wrong/matching/fallback/conflict tests | PASS |
 | Transcript isolation/privacy defaults | Focused capability, cross-session, admin, persistence, legacy-file, and audit-minimization tests | PASS |
 | Corpus/source provenance | Explicit-mode startup matrix, fixture provenance, and redirect-prevalidation tests | PASS_WITH_RISKS — live official-host crawl not run |
-| Windows/Ubuntu portability | Fresh Windows 3.12 install/full suite; CI matrix and immutable refs inspected | PASS_WITH_RISKS — remote Ubuntu CI pending |
+| Windows/Ubuntu portability | Fresh Windows 3.12 install/full suite; both remote CI matrices passed Ubuntu core, Windows core, and browser smoke | PASS |
 | Protected boundaries | Diff comparison, tracked-tree credential scan, and no live/generated/private artifact action | PASS_WITH_RISKS — history-aware scan and owner cleanup remain separate |
 | Full verification | Syntax 42 files, full suite 81/81, three evaluation validations, review status, guard, browser smoke, dependency audit | PASS_WITH_RISKS — one transient browser timeout and deprecation warning retained |
 
 ## Unavailable or deferred checks
 
-- Remote Ubuntu CI: run and retain the GitHub Actions result after push.
 - Live exact-host crawl and redirect chain: perform only in a separately authorized, controlled live-ingestion batch.
 - Artifact-backed corpus, Qdrant, Ollama, target hardware, and deployment: reproduce with an implemented immutable run manifest before claims.
 - Human semantic review/institutional attestation: obtain privacy-safe durable reviewer evidence; automated checks cannot substitute.
