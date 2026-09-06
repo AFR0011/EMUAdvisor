@@ -8,8 +8,8 @@
   const messages = document.querySelector("#messages");
   const sessionIdInput = document.querySelector("#session-id");
   const newSessionBtn = document.querySelector("#new-session-btn");
-  const historyBtn = document.querySelector("#history-btn");
   const exportBtn = document.querySelector("#export-btn");
+  const clearBtn = document.querySelector("#clear-session-btn");
   const exportFormat = document.querySelector("#export-format");
   const advancedToggle = document.querySelector("#advanced-toggle");
   const advancedPanel = document.querySelector("#advanced-panel");
@@ -18,19 +18,28 @@
     return;
   }
 
-  let currentSessionId = sessionStorage.getItem("emuSessionId") || "user-ui";
+  let currentSessionId = sessionStorage.getItem("emuSessionId");
+  let currentSessionCapability = sessionStorage.getItem("emuSessionCapability");
   let messageCounter = 0;
   const stickyScrollThreshold = 96;
 
-  if (!sessionStorage.getItem("emuSessionId")) {
-    sessionStorage.setItem("emuSessionId", currentSessionId);
-  }
   if (sessionIdInput) {
-    sessionIdInput.value = currentSessionId;
+    sessionIdInput.value = currentSessionId || "Created after first message";
+  }
+
+  function sessionHeaders() {
+    const headers = { "Content-Type": "application/json" };
+    if (currentSessionCapability) {
+      headers["X-EMU-Session-Capability"] = currentSessionCapability;
+    }
+    return headers;
   }
 
   function restoreCurrentSessionIfAvailable() {
-    fetch(`/chat/session/${encodeURIComponent(currentSessionId)}`)
+    if (!currentSessionId || !currentSessionCapability) {
+      return;
+    }
+    fetch(`/chat/session/${encodeURIComponent(currentSessionId)}`, { headers: sessionHeaders() })
       .then((r) => r.json())
       .then((payload) => {
         if (payload.messages && payload.messages.length > 0) {
@@ -40,27 +49,16 @@
       .catch(() => {});
   }
 
-  function generateSessionId() {
-    return `session-${Math.random().toString(36).slice(2, 11)}`;
-  }
-
   function createNewSession() {
-    const newSessionId = generateSessionId();
+    currentSessionId = null;
+    currentSessionCapability = null;
+    sessionStorage.removeItem("emuSessionId");
+    sessionStorage.removeItem("emuSessionCapability");
     if (sessionIdInput) {
-      sessionIdInput.value = newSessionId;
+      sessionIdInput.value = "Created after first message";
     }
-    currentSessionId = newSessionId;
-    sessionStorage.setItem("emuSessionId", newSessionId);
     messages.innerHTML = "";
-    addMessage("assistant", "New session created. Ask a question about EMU regulations.");
-    showHistoryPanel(false);
-  }
-
-  function showHistoryPanel(show) {
-    const panel = document.querySelector("#history-panel");
-    if (panel) {
-      panel.hidden = !show;
-    }
+    addMessage("assistant", "A private session will be created when you send your next question.");
   }
 
   function renderSessionMessages(payload) {
@@ -73,22 +71,6 @@
     transcript.forEach((msg) => {
       addMessage(msg.role === "user" ? "user" : "assistant", msg.text || "");
     });
-  }
-
-  function loadSessionFromHistory(sessionId) {
-    currentSessionId = sessionId;
-    if (sessionIdInput) {
-      sessionIdInput.value = sessionId;
-    }
-    sessionStorage.setItem("emuSessionId", sessionId);
-    showHistoryPanel(false);
-    fetch(`/chat/session/${encodeURIComponent(sessionId)}`)
-      .then((r) => r.json())
-      .then(renderSessionMessages)
-      .catch(() => {
-        messages.innerHTML = "";
-        addMessage("assistant", `Session ${sessionId} loaded. Continue the conversation below.`);
-      });
   }
 
   function addMessage(role, text) {
@@ -265,9 +247,12 @@
   }
 
   function exportSession(format = "markdown") {
+    if (!currentSessionId || !currentSessionCapability) {
+      return;
+    }
     fetch("/chat/export", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: sessionHeaders(),
       body: JSON.stringify({ session_id: currentSessionId, format }),
     })
       .then((r) => r.blob())
@@ -318,10 +303,10 @@
     try {
       const response = await fetch("/chat/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: sessionHeaders(),
         body: JSON.stringify({
           question: value,
-          session_id: currentSessionId,
+          session_id: currentSessionId || null,
         }),
       });
 
@@ -358,6 +343,10 @@
           if (payload.type === "session") {
             currentSessionId = payload.session_id;
             sessionStorage.setItem("emuSessionId", currentSessionId);
+            if (payload.session_capability) {
+              currentSessionCapability = payload.session_capability;
+              sessionStorage.setItem("emuSessionCapability", currentSessionCapability);
+            }
             if (sessionIdInput) {
               sessionIdInput.value = currentSessionId;
             }
@@ -412,31 +401,24 @@
 
   newSessionBtn?.addEventListener("click", createNewSession);
 
-  historyBtn?.addEventListener("click", () => {
-    fetch("/chat/sessions")
-      .then((r) => r.json())
-      .then((sessions) => {
-        const list = document.querySelector("#history-list");
-        if (list) {
-          list.innerHTML = sessions
-            .map(
-              (s) => `
-            <li>
-              <button type="button" class="history-item" data-session="${escapeAttr(s.session_id)}">
-                <strong>${escapeHtml(s.session_id)}</strong>
-                <small>${s.message_count} messages</small>
-              </button>
-            </li>
-          `
-            )
-            .join("");
-        }
-        showHistoryPanel(true);
-      });
-  });
-
   exportBtn?.addEventListener("click", () => {
     exportSession(exportFormat?.value || "markdown");
+  });
+
+  clearBtn?.addEventListener("click", async () => {
+    if (!currentSessionId || !currentSessionCapability) {
+      createNewSession();
+      return;
+    }
+    const response = await fetch("/chat/clear", {
+      method: "POST",
+      headers: sessionHeaders(),
+      body: JSON.stringify({ session_id: currentSessionId }),
+    });
+    if (response.ok) {
+      messages.innerHTML = "";
+      addMessage("assistant", "This session transcript was cleared.");
+    }
   });
 
   advancedToggle?.addEventListener("click", () => {
@@ -457,13 +439,6 @@
     }
     if (event.target.classList.contains("toggle-supporting-results")) {
       toggleSupportingResults(event.target);
-    }
-    if (event.target.id === "close-history-btn" || event.target.closest("#close-history-btn")) {
-      showHistoryPanel(false);
-    }
-    const historyItem = event.target.closest(".history-item");
-    if (historyItem?.dataset.session) {
-      loadSessionFromHistory(historyItem.dataset.session);
     }
   });
 

@@ -1,105 +1,16 @@
-# Demo Metrics Snapshot
+# Historical Metrics Record
 
-Last updated: 2026-08-08
+The prior metric snapshots are retained only as historical automated proxy observations. They are not current benchmark evidence and do not establish semantic answer correctness, citation precision, groundedness, institutional review, or production fitness.
 
-## Corpus Snapshot
+Legacy runs reported perfect percentages on several tracked sets and lower values on earlier seed runs. Those labels were too broad: the implementation primarily checked expected-evidence retrieval, answer/refusal/clarification mode, citation presence, format, and latency. The ignored corpus/metric artifacts and immutable input hashes required to reproduce the historical runs are absent from this checkout.
 
-- Source scope: official `mevzuat.emu.edu.tr` HTML plus linked official PDFs.
-- Crawl seeds: `https://mevzuat.emu.edu.tr/content.htm`, `https://mevzuat.emu.edu.tr/Content-en.htm`.
-- Crawl size: 123 pages, 22 PDFs, 4 crawl errors.
-- Active chunks: 8,714 total; 3,878 English and 4,836 Turkish.
-- Source types: 8,599 HTML chunks and 115 PDF chunks.
-- Structured evidence: 493 table summaries, 7,601 table rows, 8 derived salary facts, 497 text chunks, 115 PDF chunks without table metadata.
-- Active artifact: `artifacts/demo_corpus/latest/chunks.jsonl` (ignored).
-- Embedded Qdrant index: `artifacts/qdrant/latest` (ignored), collection `emu_regulations`.
+New runs use schema `emu-advisor-automated-proxy/v2` and report:
 
-## Verified Gold Evaluation
+- expected-evidence retrieval match rates;
+- answer-mode plus expected-evidence proxy rate;
+- refusal and clarification behavior-match rates;
+- citation presence separately from expected-evidence citation match;
+- nonempty-format and latency proxies;
+- explicit `verified: false` and automated-evidence classification.
 
-Evaluation set: `eval_sets/v1_gold.jsonl`
-
-Review status: `human_reviewed_verified`
-
-The 60-case gold set has been reviewed and verified by the project author and university staff. The metrics below are results on this fixed local evaluation set and corpus snapshot; they are not production-service guarantees.
-
-| Metric | Value |
-|---|---:|
-| Cases | 60 |
-| Answerable/cross-source cases | 52 |
-| Refusal cases | 4 |
-| Clarification cases | 4 |
-| Retrieval top-1 | 92.31% |
-| Retrieval top-3 | 98.08% |
-| Retrieval top-5 | 100.00% |
-| Response accuracy | 100.00% |
-| Rejection accuracy | 100.00% |
-| Clarification accuracy | 100.00% |
-| Citation coverage | 100.00% |
-| Extractive latency p50 | 674 ms |
-| Extractive latency p95 | 1,267 ms |
-| Failed cases | 0 |
-
-## Hard Regression Suite
-
-Evaluation set: `eval_sets/v1_hard.jsonl`
-
-This 50-case suite targets difficult table/broad-query behavior and regressions. It is kept separate from the verified gold benchmark.
-
-| Metric | Value |
-|---|---:|
-| Cases | 50 |
-| Salary-table cases | 24 |
-| Scholarship-bundle cases | 24 |
-| Refusal cases | 2 |
-| Retrieval top-1 | 97.92% |
-| Retrieval top-3 | 100.00% |
-| Retrieval top-5 | 100.00% |
-| Response accuracy | 100.00% |
-| Rejection accuracy | 100.00% |
-| Citation coverage | 100.00% |
-| Extractive latency p50 | 468 ms |
-| Extractive latency p95 | 2,867 ms |
-| Failed cases | 0 |
-
-## Generated Mode
-
-The local Ollama service and `qwen3:8b` model were detected, but the bounded smoke generation with `--ollama-timeout-s 2` timed out on the recorded machine. Generated metrics are therefore unavailable in that snapshot; extractive and grouped answers remain the validated continuity path.
-
-## Failure Analysis
-
-- Verified-gold failed cases: 0.
-- Hard-regression failed cases: 0.
-- Expected source missing from top-5: 0 in both recorded sets.
-- Missing citation: 0 in both recorded sets.
-- False refusal: 0 in both recorded sets.
-- False answer on refusal cases: 0 in both recorded sets.
-- Missing clarification: 0 in the verified gold set.
-
-## Sample Outputs
-
-Question: `What is the salary range of a professor compared to assistant professor?`
-
-Mode: `answer`, answer type `table`. The answer uses a derived salary fact and preserves the numeric ranges: Professor uses scale 7, steps 1-14, from 159,600.00 to 188,200.00; Assistant Professor uses scale 5, steps 1-14, from 107,900.00 to 145,600.00.
-
-Question: `How to get a scholarship?`
-
-Mode: `answer`, answer type `topic_bundle`. The answer returns grouped cited evidence for entrance/incentive scholarships, international discounts, high-honour awards, sports grants, research assistant/postgraduate scholarships, and disability scholarships, then asks which type to expand.
-
-Question: `Lisansüstü burslar hangi oranlarda verilir?`
-
-Mode: `answer`, answer type `table`. The top evidence comes from the Turkish scholarship/discount regulation and cites the postgraduate scholarship rows.
-
-Question: `Araştırma görevlisi burs kuralları farklı veya çelişkili mi?`
-
-Mode: `show_conflict`, answer type `direct`. Retrieval remains within the detected-language corpus and cites the research-assistant rules rather than only the general scholarship table.
-
-Question: `Bugün kampüste hangi burs etkinlikleri var?`
-
-Mode: `refuse`. The answer refuses because campus events are outside the V1 official-regulation scope, even though the query contains the word `burs`.
-
-## Known Limits
-
-- The verified 60-case `v1_gold` benchmark is human-reviewed; `v1_hard` remains a regression suite and `emu_gold_seed` remains provisional unless separately documented as reviewed.
-- These are fixed local evaluation results, not production availability or universal-quality claims.
-- Broad scholarship prompts run several deterministic subqueries; p50 remains under 1 second, but p95 is higher than direct extractive queries.
-- Generated mode is implemented and fallback-safe, but `qwen3:8b` timed out under the recorded 2-second smoke limit.
-- Qdrant has unit coverage, CLI support, and a validated embedded local Qdrant index; a Docker/live Qdrant service deployment is still not validated in the recorded environment.
+No new artifact-backed run was performed in EMU-B001. Presentation remains blocked.

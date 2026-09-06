@@ -1,30 +1,19 @@
 # Board Demo Readiness
 
-Status: `partial`
+Status: `blocked`
 
-The local board demo is presentable with named deployment gaps that must not be described as production-ready.
+The repository is not currently approved for board-demo, portfolio-presentation, release, deployment, or production claims.
 
-## Checks
+## Evidence status
 
-| Check | Status | Detail |
+| Area | Status | Meaning |
 |---|---|---|
-| current product spec | `pass` | EMU_RAG_Current_System_Specs.md |
-| full analysis | `pass` | docs/EMUAdvisor Full Analysis.md |
-| demo storyboard | `pass` | docs/DEMO_STORYBOARD.md |
-| publication checklist | `pass` | docs/PUBLICATION_CHECKLIST.md |
-| verified gold evaluation set | `pass` | eval_sets/v1_gold.jsonl |
-| hard regression set | `pass` | eval_sets/v1_hard.jsonl |
-| latest metrics artifact | `pass` | top5=1.0 citation=1.0 |
-| verified gold review status | `pass` | 60 cases; 0 pending |
-| auxiliary evaluation review status | `partial` | 100 hard/seed cases retain separate review status |
-| production admin token | `partial` | not set for this local check |
-| live Qdrant service | `blocked` | service-backed Qdrant not documented in environment |
-| local analytics log | `pass` | 193 audit events in recorded snapshot |
+| Software regression suite | In progress | Automated checks can verify implementation behavior only. |
+| `v1_gold.jsonl` | Blocked | 60 assistant-curated cases pending independent human review. |
+| Historical percentages | Legacy/unverified | Automated proxy outputs, not semantic answer-quality evidence. |
+| Corpus artifacts | Blocked | Not present in Git; no immutable reproducibility manifest for historical runs. |
+| Fixture mode | Test-only | Synthetic data, visibly labeled, never official-corpus evidence. |
+| Production services | Blocked | Live Qdrant/Ollama/target hardware/deployment are unverified. |
+| Publication rights | Blocked | Code license does not resolve corpus redistribution rights. |
 
-## Non-Negotiable Limits
-
-- This is a board-demo readiness report, not a production approval.
-- `v1_gold` is human-reviewed and verified by the project author and university staff.
-- `v1_hard` is a regression suite and `emu_gold_seed` is provisional unless separately reviewed and documented.
-- Production-style deployment remains blocked until service-backed Qdrant and target hardware are validated.
-- Generated mode remains extractive-first unless local model latency and answer quality are characterized.
+Re-run `python -m emu_advisor.readiness --out docs/BOARD_DEMO_READINESS.md` only in a controlled workspace. The generated report must preserve these blockers while independent review is pending.

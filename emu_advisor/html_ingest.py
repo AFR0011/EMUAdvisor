@@ -660,8 +660,10 @@ def _fold(text: str) -> str:
 
 def _require_allowed_source(source_url: str) -> None:
     parsed = urlparse(source_url)
+    if parsed.scheme == "fixture" and not parsed.hostname and parsed.path:
+        return
     if parsed.scheme not in {"http", "https"}:
-        raise HtmlScopeError("HTML source URL must be http or https")
+        raise HtmlScopeError("HTML source URL must be official HTTPS or explicit fixture provenance")
     if parsed.hostname != ALLOWED_REGULATION_HOST:
         raise HtmlScopeError(f"source host is outside V1 scope: {parsed.hostname}")
 

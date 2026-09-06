@@ -19,7 +19,13 @@ from .answer import (
     scholarship_group_query,
 )
 from .corpus import load_chunks_jsonl
-from .evaluation import EvaluationCase, evaluate_hits, load_cases, validate_case_set
+from .evaluation import (
+    EvaluationCase,
+    citation_matches_expected_evidence,
+    evaluate_hits,
+    load_cases,
+    validate_case_set,
+)
 from .generation import OllamaGenerator
 from .modes import MODE_PRESETS
 from .retrieval import HybridRetriever
@@ -27,9 +33,9 @@ from .routing import route_query
 
 
 TARGETS = {
-    "retrieval_top5": 0.85,
-    "rejection_accuracy": 0.90,
-    "citation_coverage": 1.0,
+    "expected_evidence_retrieval_top5_rate": 0.85,
+    "refusal_behavior_match_rate": 0.90,
+    "expected_evidence_citation_match_rate": 1.0,
     "extractive_latency_p50_ms": 1000,
 }
 
@@ -40,11 +46,11 @@ MODE_LATENCY_TARGETS = {
 }
 
 SCORE_WEIGHTS = {
-    "retrieval_correctness": 0.30,
-    "answer_correctness": 0.30,
-    "citation_precision": 0.20,
-    "groundedness": 0.15,
-    "format_compliance": 0.05,
+    "retrieval_evidence_proxy": 0.30,
+    "behavior_evidence_proxy": 0.30,
+    "citation_match_proxy": 0.20,
+    "combined_support_proxy": 0.15,
+    "nonempty_format_proxy": 0.05,
 }
 
 
@@ -59,10 +65,12 @@ class CaseResult:
     retrieval_top1: bool
     retrieval_top3: bool
     retrieval_top5: bool
-    response_correct: bool
+    behavior_evidence_proxy_pass: bool
     rejection_correct: bool
     clarification_correct: bool
-    citation_covered: bool
+    citation_present: bool
+    expected_evidence_citation_match: bool
+    citation_evidence_level: str
     route_ms: int
     retrieve_ms: int
     extractive_ms: int
@@ -70,11 +78,11 @@ class CaseResult:
     first_token_ms: Optional[int]
     generated_error: Optional[str]
     retrieval_score: float
-    answer_correctness_score: float
-    citation_precision_score: float
-    groundedness_score: float
-    format_compliance_score: float
-    total_score: float
+    behavior_evidence_proxy_score: float
+    citation_match_proxy_score: float
+    combined_support_proxy_score: float
+    nonempty_format_proxy_score: float
+    weighted_proxy_score: float
     failure_reason: str
     answer: str
     citations: str
@@ -156,13 +164,17 @@ def run_evaluation(
             first_token_ms = generated.first_token_ms
             generated_error = generated.error
 
-        citation_covered = bool(citations) if case.expected_behavior in {"answer", "conflict"} else True
-        response_correct = _response_correct(
+        citation_present = bool(citations) if case.expected_behavior in {"answer", "conflict"} else True
+        expected_evidence_citation_match, citation_evidence_level = citation_matches_expected_evidence(case, citations)
+        if case.expected_behavior not in {"answer", "conflict"}:
+            expected_evidence_citation_match = True
+            citation_evidence_level = "not_applicable"
+        behavior_evidence_proxy_pass = _behavior_evidence_proxy_pass(
             case,
             answer.text,
             metric.top5,
             actual_mode=answer.mode,
-            citation_covered=citation_covered,
+            expected_evidence_citation_match=expected_evidence_citation_match,
         )
         rejection_correct = case.expected_behavior == "refuse" and answer.mode == "refuse"
         clarification_correct = case.expected_behavior == "clarify" and answer.mode == "clarify"
@@ -170,20 +182,21 @@ def run_evaluation(
             case=case,
             actual_mode=answer.mode,
             metric=metric,
-            response_correct=response_correct,
+            behavior_evidence_proxy_pass=behavior_evidence_proxy_pass,
             rejection_correct=rejection_correct,
             clarification_correct=clarification_correct,
-            citation_covered=citation_covered,
+            citation_present=citation_present,
+            expected_evidence_citation_match=expected_evidence_citation_match,
         )
         score_parts = _score_case(
             case=case,
             metric=metric,
             answer_text=answer.text,
             actual_mode=answer.mode,
-            response_correct=response_correct,
+            behavior_evidence_proxy_pass=behavior_evidence_proxy_pass,
             rejection_correct=rejection_correct,
             clarification_correct=clarification_correct,
-            citation_covered=citation_covered,
+            expected_evidence_citation_match=expected_evidence_citation_match,
             failure_reason=failure_reason,
         )
         results.append(
@@ -197,22 +210,24 @@ def run_evaluation(
                 retrieval_top1=metric.top1,
                 retrieval_top3=metric.top3,
                 retrieval_top5=metric.top5,
-                response_correct=response_correct,
+                behavior_evidence_proxy_pass=behavior_evidence_proxy_pass,
                 rejection_correct=rejection_correct,
                 clarification_correct=clarification_correct,
-                citation_covered=citation_covered,
+                citation_present=citation_present,
+                expected_evidence_citation_match=expected_evidence_citation_match,
+                citation_evidence_level=citation_evidence_level,
                 route_ms=route_ms,
                 retrieve_ms=retrieve_ms,
                 extractive_ms=extractive_ms,
                 generation_ms=generated_ms,
                 first_token_ms=first_token_ms,
                 generated_error=generated_error,
-                retrieval_score=score_parts["retrieval_correctness"],
-                answer_correctness_score=score_parts["answer_correctness"],
-                citation_precision_score=score_parts["citation_precision"],
-                groundedness_score=score_parts["groundedness"],
-                format_compliance_score=score_parts["format_compliance"],
-                total_score=score_parts["total"],
+                retrieval_score=score_parts["retrieval_evidence_proxy"],
+                behavior_evidence_proxy_score=score_parts["behavior_evidence_proxy"],
+                citation_match_proxy_score=score_parts["citation_match_proxy"],
+                combined_support_proxy_score=score_parts["combined_support_proxy"],
+                nonempty_format_proxy_score=score_parts["nonempty_format_proxy"],
+                weighted_proxy_score=score_parts["weighted_proxy"],
                 failure_reason=failure_reason,
                 answer=answer.text,
                 citations=json.dumps(citations, ensure_ascii=False),
@@ -253,6 +268,9 @@ def run_all_modes(
             generator=generator,
         )
     comparison = {
+        "schema_version": "emu-advisor-automated-proxy/v2",
+        "evidence_class": "automated_regression_proxy",
+        "verified": False,
         "available": True,
         "cases_path": str(cases_path),
         "chunks_path": str(chunks_path),
@@ -278,18 +296,22 @@ def summarize_case_results(results: List[CaseResult]) -> Dict[str, Any]:
     first_token_latencies = [result.first_token_ms for result in successful_generations if result.first_token_ms is not None]
 
     summary = {
+        "schema_version": "emu-advisor-automated-proxy/v2",
+        "evidence_class": "automated_regression_proxy",
+        "verified": False,
         "available": True,
         "cases": len(results),
         "answerable_cases": len(answerable),
         "rejection_cases": len(refusals),
         "clarification_cases": len(clarifications),
-        "retrieval_top1": _rate(answerable, lambda result: result.retrieval_top1),
-        "retrieval_top3": _rate(answerable, lambda result: result.retrieval_top3),
-        "retrieval_top5": _rate(answerable, lambda result: result.retrieval_top5),
-        "response_accuracy": _rate(answerable, lambda result: result.response_correct),
-        "rejection_accuracy": _rate(refusals, lambda result: result.rejection_correct),
-        "clarification_accuracy": _rate(clarifications, lambda result: result.clarification_correct),
-        "citation_coverage": _rate(answerable, lambda result: result.citation_covered),
+        "expected_evidence_retrieval_top1_rate": _rate(answerable, lambda result: result.retrieval_top1),
+        "expected_evidence_retrieval_top3_rate": _rate(answerable, lambda result: result.retrieval_top3),
+        "expected_evidence_retrieval_top5_rate": _rate(answerable, lambda result: result.retrieval_top5),
+        "answer_mode_and_evidence_proxy_rate": _rate(answerable, lambda result: result.behavior_evidence_proxy_pass),
+        "refusal_behavior_match_rate": _rate(refusals, lambda result: result.rejection_correct),
+        "clarification_behavior_match_rate": _rate(clarifications, lambda result: result.clarification_correct),
+        "citation_presence_rate": _rate(answerable, lambda result: result.citation_present),
+        "expected_evidence_citation_match_rate": _rate(answerable, lambda result: result.expected_evidence_citation_match),
         "extractive_latency_p50_ms": int(median(extractive_latencies)) if extractive_latencies else None,
         "extractive_latency_p95_ms": _percentile(extractive_latencies, 0.95),
         "generated_latency_p50_ms": int(median(generation_latencies)) if generation_latencies else None,
@@ -300,23 +322,23 @@ def summarize_case_results(results: List[CaseResult]) -> Dict[str, Any]:
         "generated_cases_completed": len(successful_generations),
         "generated_error_cases": len([result for result in generation_attempts if result.generated_error]),
         "generated_available": bool(successful_generations),
-        "retrieval_correctness_score": _average(results, lambda result: result.retrieval_score),
-        "answer_correctness_score": _average(results, lambda result: result.answer_correctness_score),
-        "citation_precision_score": _average(results, lambda result: result.citation_precision_score),
-        "groundedness_score": _average(results, lambda result: result.groundedness_score),
-        "format_compliance_score": _average(results, lambda result: result.format_compliance_score),
-        "total_score": _average(results, lambda result: result.total_score),
+        "retrieval_evidence_proxy_score": _average(results, lambda result: result.retrieval_score),
+        "behavior_evidence_proxy_score": _average(results, lambda result: result.behavior_evidence_proxy_score),
+        "citation_match_proxy_score": _average(results, lambda result: result.citation_match_proxy_score),
+        "combined_support_proxy_score": _average(results, lambda result: result.combined_support_proxy_score),
+        "nonempty_format_proxy_score": _average(results, lambda result: result.nonempty_format_proxy_score),
+        "weighted_proxy_score": _average(results, lambda result: result.weighted_proxy_score),
         "failure_counts": _failure_counts(results),
         "category_metrics": _category_metrics(results),
         "worst_failed_cases": _worst_failed_cases(results),
         "targets": TARGETS,
     }
-    summary["presentable"] = (
-        summary["retrieval_top5"] is not None
-        and summary["retrieval_top5"] >= TARGETS["retrieval_top5"]
-        and summary["rejection_accuracy"] is not None
-        and summary["rejection_accuracy"] >= TARGETS["rejection_accuracy"]
-        and summary["citation_coverage"] == TARGETS["citation_coverage"]
+    summary["automated_gate_pass"] = (
+        summary["expected_evidence_retrieval_top5_rate"] is not None
+        and summary["expected_evidence_retrieval_top5_rate"] >= TARGETS["expected_evidence_retrieval_top5_rate"]
+        and summary["refusal_behavior_match_rate"] is not None
+        and summary["refusal_behavior_match_rate"] >= TARGETS["refusal_behavior_match_rate"]
+        and summary["expected_evidence_citation_match_rate"] == TARGETS["expected_evidence_citation_match_rate"]
         and summary["extractive_latency_p50_ms"] is not None
         and summary["extractive_latency_p50_ms"] < TARGETS["extractive_latency_p50_ms"]
     )
@@ -350,21 +372,21 @@ def write_reports(results: List[CaseResult], summary: Dict[str, Any], *, out_dir
     (out_dir / "metrics.md").write_text(_markdown_summary(summary), encoding="utf-8")
 
 
-def _response_correct(
+def _behavior_evidence_proxy_pass(
     case: EvaluationCase,
     answer_text: str,
     top5: bool,
     *,
     actual_mode: str,
-    citation_covered: bool,
+    expected_evidence_citation_match: bool,
 ) -> bool:
     if case.expected_behavior == "conflict":
-        return top5 and citation_covered and (actual_mode == "show_conflict" or "conflict" in answer_text.casefold())
+        return top5 and expected_evidence_citation_match and (actual_mode == "show_conflict" or "conflict" in answer_text.casefold())
     if case.expected_behavior != "answer":
         return False
     if not top5:
         return False
-    return citation_covered and actual_mode in {"answer", "answer_uncertain"}
+    return expected_evidence_citation_match and actual_mode in {"answer", "answer_uncertain"}
 
 
 def _rate(results: List[CaseResult], predicate) -> Optional[float]:
@@ -414,18 +436,21 @@ def _failure_reason(
     case: EvaluationCase,
     actual_mode: str,
     metric,
-    response_correct: bool,
+    behavior_evidence_proxy_pass: bool,
     rejection_correct: bool,
     clarification_correct: bool,
-    citation_covered: bool,
+    citation_present: bool,
+    expected_evidence_citation_match: bool,
 ) -> str:
     if case.expected_behavior in {"answer", "conflict"}:
         if not metric.top5:
-            return "expected_source_missing_from_top5"
-        if not citation_covered:
+            return "expected_evidence_missing_from_top5"
+        if not citation_present:
             return "missing_citation"
-        if not response_correct:
-            return "answer_not_supported_by_expected_source"
+        if not expected_evidence_citation_match:
+            return "citation_does_not_match_expected_evidence"
+        if not behavior_evidence_proxy_pass:
+            return "answer_mode_or_expected_evidence_proxy_failed"
     if case.expected_behavior == "refuse" and not rejection_correct:
         return "false_answer_for_refusal_case" if actual_mode != "refuse" else ""
     if case.expected_behavior == "clarify" and not clarification_correct:
@@ -439,10 +464,10 @@ def _score_case(
     metric,
     answer_text: str,
     actual_mode: str,
-    response_correct: bool,
+    behavior_evidence_proxy_pass: bool,
     rejection_correct: bool,
     clarification_correct: bool,
-    citation_covered: bool,
+    expected_evidence_citation_match: bool,
     failure_reason: str,
 ) -> Dict[str, float]:
     if case.expected_behavior in {"answer", "conflict"}:
@@ -454,42 +479,43 @@ def _score_case(
             retrieval = 0.70
         else:
             retrieval = 0.0
-        answer = 1.0 if response_correct else 0.0
-        citation = 1.0 if citation_covered else 0.0
-        groundedness = 1.0 if response_correct and citation_covered and not failure_reason else 0.0
+        answer = 1.0 if behavior_evidence_proxy_pass else 0.0
+        citation = 1.0 if expected_evidence_citation_match else 0.0
+        support = 1.0 if behavior_evidence_proxy_pass and expected_evidence_citation_match and not failure_reason else 0.0
     else:
         retrieval = 1.0
         correct_behavior = rejection_correct if case.expected_behavior == "refuse" else clarification_correct
         answer = 1.0 if correct_behavior else 0.0
         citation = 1.0
-        groundedness = 1.0 if correct_behavior else 0.0
+        support = 1.0 if correct_behavior else 0.0
     format_score = 1.0 if str(answer_text).strip() else 0.0
     total = (
-        SCORE_WEIGHTS["retrieval_correctness"] * retrieval
-        + SCORE_WEIGHTS["answer_correctness"] * answer
-        + SCORE_WEIGHTS["citation_precision"] * citation
-        + SCORE_WEIGHTS["groundedness"] * groundedness
-        + SCORE_WEIGHTS["format_compliance"] * format_score
+        SCORE_WEIGHTS["retrieval_evidence_proxy"] * retrieval
+        + SCORE_WEIGHTS["behavior_evidence_proxy"] * answer
+        + SCORE_WEIGHTS["citation_match_proxy"] * citation
+        + SCORE_WEIGHTS["combined_support_proxy"] * support
+        + SCORE_WEIGHTS["nonempty_format_proxy"] * format_score
     )
     return {
-        "retrieval_correctness": retrieval,
-        "answer_correctness": answer,
-        "citation_precision": citation,
-        "groundedness": groundedness,
-        "format_compliance": format_score,
-        "total": total,
+        "retrieval_evidence_proxy": retrieval,
+        "behavior_evidence_proxy": answer,
+        "citation_match_proxy": citation,
+        "combined_support_proxy": support,
+        "nonempty_format_proxy": format_score,
+        "weighted_proxy": total,
     }
 
 
 def _failure_counts(results: List[CaseResult]) -> Dict[str, int]:
     counts = {
         "failed_cases": 0,
-        "expected_source_missing_from_top5": 0,
+        "expected_evidence_missing_from_top5": 0,
         "missing_citation": 0,
         "false_refusal": 0,
         "false_answer": 0,
         "missing_clarification": 0,
-        "answer_not_supported_by_expected_source": 0,
+        "citation_does_not_match_expected_evidence": 0,
+        "answer_mode_or_expected_evidence_proxy_failed": 0,
     }
     for result in results:
         failed = bool(result.failure_reason)
@@ -511,8 +537,8 @@ def _category_metrics(results: List[CaseResult]) -> Dict[str, Dict[str, Any]]:
         answerable = [result for result in category_results if result.expected_behavior in {"answer", "conflict"}]
         out[category] = {
             "cases": len(category_results),
-            "retrieval_top5": _rate(answerable, lambda result: result.retrieval_top5),
-            "response_accuracy": _rate(answerable, lambda result: result.response_correct),
+            "expected_evidence_retrieval_top5_rate": _rate(answerable, lambda result: result.retrieval_top5),
+            "answer_mode_and_evidence_proxy_rate": _rate(answerable, lambda result: result.behavior_evidence_proxy_pass),
             "failed_cases": sum(1 for result in category_results if result.failure_reason),
         }
     return out
@@ -536,20 +562,29 @@ def _worst_failed_cases(results: List[CaseResult], *, limit: int = 12) -> List[D
 
 def _markdown_summary(summary: Dict[str, Any]) -> str:
     mode = summary.get("mode", "balanced")
-    lines = ["# EMU Advisor Metrics", "", f"Mode: `{mode}`", f"Presentable: `{summary['presentable']}`", ""]
+    lines = [
+        "# EMU Advisor Automated Regression Proxies",
+        "",
+        "These measurements are automated behavior/evidence proxies, not semantic answer-quality or human-review evidence.",
+        "",
+        f"Mode: `{mode}`",
+        f"Automated gate pass: `{summary['automated_gate_pass']}`",
+        "",
+    ]
     for key in [
         "cases",
-        "total_score",
-        "retrieval_correctness_score",
-        "answer_correctness_score",
-        "citation_precision_score",
-        "groundedness_score",
-        "format_compliance_score",
-        "retrieval_top5",
-        "response_accuracy",
-        "rejection_accuracy",
-        "clarification_accuracy",
-        "citation_coverage",
+        "weighted_proxy_score",
+        "retrieval_evidence_proxy_score",
+        "behavior_evidence_proxy_score",
+        "citation_match_proxy_score",
+        "combined_support_proxy_score",
+        "nonempty_format_proxy_score",
+        "expected_evidence_retrieval_top5_rate",
+        "answer_mode_and_evidence_proxy_rate",
+        "refusal_behavior_match_rate",
+        "clarification_behavior_match_rate",
+        "citation_presence_rate",
+        "expected_evidence_citation_match_rate",
         "extractive_latency_p50_ms",
         "extractive_latency_p95_ms",
         "generated_latency_p50_ms",
@@ -584,8 +619,8 @@ def _rank_modes(results: Dict[str, Any]) -> List[Dict[str, Any]]:
     ranked = [
         {
             "mode": mode,
-            "total_score": summary.get("total_score"),
-            "retrieval_top5": summary.get("retrieval_top5"),
+            "weighted_proxy_score": summary.get("weighted_proxy_score"),
+            "expected_evidence_retrieval_top5_rate": summary.get("expected_evidence_retrieval_top5_rate"),
             "extractive_latency_p50_ms": summary.get("extractive_latency_p50_ms"),
             "failed_cases": summary.get("failure_counts", {}).get("failed_cases"),
         }
@@ -593,7 +628,7 @@ def _rank_modes(results: Dict[str, Any]) -> List[Dict[str, Any]]:
     ]
     ranked.sort(
         key=lambda item: (
-            item["total_score"] if item["total_score"] is not None else -1,
+            item["weighted_proxy_score"] if item["weighted_proxy_score"] is not None else -1,
             -(item["extractive_latency_p50_ms"] or 999999),
         ),
         reverse=True,
@@ -603,14 +638,14 @@ def _rank_modes(results: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _mode_comparison_markdown(comparison: Dict[str, Any]) -> str:
     lines = ["# EMU Advisor Mode Comparison", ""]
-    lines.append("| Mode | Total score | Top-5 retrieval | p50 extractive | Failed cases |")
+    lines.append("| Mode | Weighted proxy | Expected-evidence top-5 | p50 extractive | Failed cases |")
     lines.append("|---|---:|---:|---:|---:|")
     for item in comparison.get("ranking", []):
         lines.append(
             "| {mode} | {total} | {top5} | {latency} | {failed} |".format(
                 mode=item["mode"],
-                total=_fmt_float(item.get("total_score")),
-                top5=_fmt_percent(item.get("retrieval_top5")),
+                total=_fmt_float(item.get("weighted_proxy_score")),
+                top5=_fmt_percent(item.get("expected_evidence_retrieval_top5_rate")),
                 latency="-" if item.get("extractive_latency_p50_ms") is None else f"{item['extractive_latency_p50_ms']} ms",
                 failed="-" if item.get("failed_cases") is None else item["failed_cases"],
             )

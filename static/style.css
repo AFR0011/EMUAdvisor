@@ -1129,3 +1129,16 @@ summary {
     min-height: 46px;
   }
 }
+.fixture-banner {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 2px solid #9a3412;
+  border-radius: 0.6rem;
+  background: #ffedd5;
+  color: #7c2d12;
+  font-weight: 700;
+}
+
+.fixture-banner[hidden] {
+  display: none;
+}

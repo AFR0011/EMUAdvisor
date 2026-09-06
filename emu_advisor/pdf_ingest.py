@@ -95,8 +95,10 @@ def ingest_pdf_document(input_doc: PdfDocumentInput, *, max_words: int = 220) ->
 
 def _require_allowed_pdf_source(source_url: str) -> None:
     parsed = urlparse(source_url)
+    if parsed.scheme == "fixture" and not parsed.hostname and parsed.path.lower().endswith(".pdf"):
+        return
     if parsed.scheme not in {"http", "https"}:
-        raise PdfScopeError("PDF source URL must be http or https")
+        raise PdfScopeError("PDF source URL must be official HTTPS or explicit fixture provenance")
     if parsed.hostname != ALLOWED_REGULATION_HOST:
         raise PdfScopeError(f"source host is outside V1 scope: {parsed.hostname}")
     if not parsed.path.lower().endswith(".pdf"):

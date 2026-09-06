@@ -86,21 +86,25 @@ def evaluate_hits(case: EvaluationCase, hits: List[Dict[str, Any]]) -> Retrieval
     if case.expected_behavior in {"refuse", "clarify"}:
         return RetrievalMetric(case.case_id, case.expected_behavior, None, False, False, False)
 
-    expected_ids = {value for value in (case.expected_chunk_id, case.expected_document_id) if value}
-    expected_ids.update(case.expected_chunk_ids)
+    expected_ids = set(case.expected_chunk_ids)
+    if case.expected_chunk_id:
+        expected_ids.add(case.expected_chunk_id)
+    expected_documents = {case.expected_document_id} if case.expected_document_id else set()
     expected_sources = {case.expected_source_url} if case.expected_source_url else set()
     expected_sources.update(case.expected_source_urls)
     rank: Optional[int] = None
     for idx, hit in enumerate(hits, start=1):
         ids = {str(hit.get("chunk_id", "")), str(hit.get("document_id", ""))}
         source_url = str(hit.get("source_url", ""))
-        text = str(hit.get("chunk_text", "")).casefold()
-        expected_keywords = getattr(case, "expected_answer_keywords", [])
-        keyword_hit = bool(expected_keywords) and all(
-            keyword.casefold() in text for keyword in expected_keywords
-        )
-        source_hit = bool(expected_sources) and source_url in expected_sources
-        if (expected_ids and expected_ids & ids) or source_hit or keyword_hit:
+        if expected_ids:
+            matched = bool(expected_ids & ids)
+        elif expected_documents:
+            matched = bool(expected_documents & ids)
+        else:
+            matched = bool(expected_sources) and _normalize_evidence_url(source_url) in {
+                _normalize_evidence_url(value) for value in expected_sources
+            }
+        if matched:
             rank = idx
             break
 
@@ -112,6 +116,62 @@ def evaluate_hits(case: EvaluationCase, hits: List[Dict[str, Any]]) -> Retrieval
         top3=rank is not None and rank <= 3,
         top5=rank is not None and rank <= 5,
     )
+
+
+def citation_matches_expected_evidence(
+    case: EvaluationCase,
+    citations: List[Dict[str, Any]],
+) -> tuple[bool, str]:
+    """Return whether citations match labeled evidence and the evidence level used.
+
+    Keywords never establish citation correctness. Chunk identifiers are primary;
+    exact normalized source URLs are used only when a case has no expected chunks.
+    Conflict cases require all distinct expected evidence items.
+    """
+
+    expected_chunks = set(case.expected_chunk_ids)
+    if case.expected_chunk_id:
+        expected_chunks.add(case.expected_chunk_id)
+    cited_chunks = {str(item.get("chunk_id") or "") for item in citations}
+
+    if expected_chunks:
+        matched = expected_chunks.issubset(cited_chunks) if case.expected_behavior == "conflict" else bool(expected_chunks & cited_chunks)
+        level = "expected_chunk"
+    else:
+        expected_sources = {_normalize_evidence_url(value) for value in case.expected_source_urls}
+        if case.expected_source_url:
+            expected_sources.add(_normalize_evidence_url(case.expected_source_url))
+        cited_sources = {_normalize_evidence_url(str(item.get("source_url") or "")) for item in citations}
+        matched = expected_sources.issubset(cited_sources) if case.expected_behavior == "conflict" else bool(expected_sources & cited_sources)
+        level = "expected_source"
+
+    if matched and case.expected_citation_paths:
+        cited_paths = {_citation_path_from_result(item) for item in citations}
+        expected_paths = {_normalize_citation_path(value) for value in case.expected_citation_paths}
+        matched = expected_paths.issubset(cited_paths) if case.expected_behavior == "conflict" else bool(expected_paths & cited_paths)
+        level += "_and_path"
+    return matched, level
+
+
+def _normalize_evidence_url(value: str) -> str:
+    return value.strip().rstrip("/").casefold()
+
+
+def _normalize_citation_path(value: str) -> str:
+    return " ".join(value.strip().casefold().split())
+
+
+def _citation_path_from_result(citation: Dict[str, Any]) -> str:
+    explicit = citation.get("citation_path") or citation.get("section_path")
+    if explicit:
+        return _normalize_citation_path(str(explicit))
+    article = citation.get("article_number") or citation.get("article")
+    page = citation.get("page_number") or citation.get("page")
+    if article:
+        return _normalize_citation_path(f"Art. {article}")
+    if page:
+        return _normalize_citation_path(f"p. {page}")
+    return ""
 
 
 def summarize_metrics(metrics: Iterable[RetrievalMetric]) -> Dict[str, Any]:

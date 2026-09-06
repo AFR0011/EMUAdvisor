@@ -2,6 +2,8 @@
 
 Use this log for meaningful project milestones only.
 
+> **Historical evidence notice.** Performance percentages and readiness language recorded before the 2026-09-06 EMU-B001 correction are legacy automated proxy outputs and historical milestone descriptions. They are not semantic answer-quality measurements, independent review, current presentation evidence, or production-readiness claims. Current status is governed by `DEV_STATE.md` and `docs/PROJECT_STATE.md`.
+
 ## 2026-04-30 - Repo Mapping Baseline
 
 - Created root operating docs for the EMUAdvisor workspace.
@@ -111,3 +113,15 @@ Use this log for meaningful project milestones only.
 
 - `cee36fc Add files via upload`
 - `064058e Initial commit`
+
+## 2026-09-06 - EMU-B001 Evidence and Privacy Correction
+
+- Corrected `v1_gold.jsonl` to assistant-curated/pending independent-review provenance while preserving all protected case content and ordering.
+- Replaced new semantic-sounding metric output with versioned automated retrieval/evidence/behavior/format/latency proxies and expected-evidence citation matching.
+- Added server-issued per-session capabilities, admin-only minimized enumeration, and default-off transcript/audit/raw-query persistence.
+- Required explicit fixture/artifact corpus mode, made fixture state visible, hardened exact-host HTTPS redirects, and stopped fixture provenance laundering.
+- Added platform-aware Windows dependencies and Windows/Ubuntu Python 3.12 CI with immutable official-action pins.
+- Historical percentages in earlier entries are retained only as legacy automated proxy records; they are not semantic answer-quality or current presentation evidence.
+- Presentation, publication, release, deployment, and production-readiness remain blocked.
+- Initial independent TEST failed because three historical caveats followed the claims they qualified; a bounded documentation repair moved the caveats ahead of those claims.
+- Fresh independent TEST passed the repaired snapshot with residual risks. EMU-B001 closed as `COMPLETE_WITH_RISKS`; remote CI, live/artifact-backed reproduction, human review, rights, history-aware secret review, and Internet-grade deployment security remain gated.

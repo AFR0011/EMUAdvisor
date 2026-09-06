@@ -165,12 +165,14 @@
       const modes = await modesResponse.json();
       const analytics = await analyticsResponse.json();
       corpusCount.textContent = corpus.chunk_count ?? "-";
-      top5.textContent = formatPercent(metrics.retrieval_top5);
-      reject.textContent = formatPercent(metrics.rejection_accuracy);
+      top5.textContent = metrics.legacy ? "legacy" : formatPercent(metrics.expected_evidence_retrieval_top5_rate);
+      reject.textContent = metrics.legacy ? "legacy" : formatPercent(metrics.refusal_behavior_match_rate);
       latency.textContent = metrics.extractive_latency_p50_ms == null ? "-" : `${metrics.extractive_latency_p50_ms}ms`;
       auditCount.textContent = analytics.events ?? "-";
       corpusDetails.innerHTML = renderDetails({
         source: corpus.source,
+        corpus_mode: corpus.corpus_mode,
+        fixture: corpus.fixture,
         runtime_profile: corpus.runtime_profile,
         vector_backend: corpus.vector_backend,
         embedding_model: corpus.embedding_model,
@@ -229,7 +231,7 @@
     return Object.entries(modes)
       .map(([name, preset]) => {
         const latest = payload.results?.[name] || {};
-        const score = latest.total_score == null ? "-" : Number(latest.total_score).toFixed(2);
+        const score = latest.weighted_proxy_score == null ? "-" : Number(latest.weighted_proxy_score).toFixed(2);
         return `\n        <article class="mode-card">\n          <h3>${escapeHtml(name)}</h3>\n          <p>${escapeHtml(preset.local_llm_label || "")}</p>\n          <dl>\n            <div><dt>fanout</dt><dd>${escapeHtml(String(preset.retrieval_fanout))}</dd></div>\n            <div><dt>rerank</dt><dd>${preset.rerank_enabled ? "on" : "off"}</dd></div>\n            <div><dt>context</dt><dd>${escapeHtml(String(preset.max_context_chunks))}</dd></div>\n            <div><dt>score</dt><dd>${score}</dd></div>\n          </dl>\n        </article>\n      `;
       })
       .join("");
