@@ -4,10 +4,10 @@
 
 - This workspace is the EMUAdvisor project for a local-only EMU Regulation Assistant.
 - The root folder is the primary Git repository for future `emu-advisor` work.
-- `.old/` is an ignored local archive of the previous NLPCrawler demo; treat it as legacy/prototype reference code unless the user explicitly promotes or imports it.
+- `.old/` is absent in this checkout. If historical prototype material is recovered from Git history, treat it as non-authoritative unless the user explicitly promotes it.
 - The project is a research/prototype-to-product workspace, not a finished production app.
 
-## Source Of Truth
+## Authority order
 
 Use these sources in order:
 
@@ -17,10 +17,13 @@ Use these sources in order:
 4. `docs/RUN_PROTOCOL.md` for local setup and verification.
 5. `.old/README.md` and `.old/backend/README.md` only for old-demo mechanics and commands.
 
+`DEV_STATE.md` is the active workflow-state authority and the **Active batch** section of
+`BLUEPRINT.md` is the accepted task/acceptance authority once a batch is planned.
+
 ## Product Boundaries
 
 - V1 is a staff-facing demo for answering questions about official EMU rules and regulations.
-- V1 source scope is `mevzuat.emu.edu.tr` plus official PDFs linked from or belonging to that regulation source set.
+- V1 source scope is exact-host HTTPS on `mevzuat.emu.edu.tr`; every redirect and final URL must remain in that boundary. File inputs are explicit test fixtures and never official-source evidence.
 - Runtime behavior must remain local-only; do not add external API dependencies for answering, retrieval, embeddings, reranking, or generation.
 - English and Turkish regulation corpora must remain separate; do not provide cross-corpus EN/TR search or comparison in V1 unless the project scope is explicitly changed.
 - Answers must be grounded in retrieved evidence with citations and must refuse, clarify, or state uncertainty when support is insufficient.
@@ -39,11 +42,38 @@ Use these sources in order:
 
 ## Verification Rules
 
-- This repo has no single standard test command yet. Follow `docs/RUN_PROTOCOL.md`.
+- The standard core command is `python -m unittest discover -s tests`; follow `docs/RUN_PROTOCOL.md` for the required explicit safe environment and broader checks.
 - For documentation-only changes, verify file creation and internal consistency.
 - For Python code changes, start with syntax checks that do not write bytecode, then run targeted imports or CLI commands as dependencies allow.
 - For retrieval or answer changes, use a built index plus evaluation queries; do not substitute syntax checks for retrieval validation.
 - For backend/UI changes, verify FastAPI startup and perform at least one local browser/API smoke check when dependencies and index artifacts exist.
+
+## Protected paths
+
+- `eval_sets/**`: evaluation inputs and review metadata; changes require explicit provenance and claim reconciliation.
+- `artifacts/**`, `logs/**`, local Qdrant/index/corpus outputs, and chat transcripts: generated or potentially sensitive; do not commit them by default.
+- `.env*`, tokens, local service configuration, reviewer identities, and any non-public university material.
+- `EMU_RAG_Current_System_Specs.md`, `LICENSE`, Git history, remote `main`, tags, releases, and deployments.
+- `.old/**`: ignored historical prototype evidence; do not promote or rewrite it without explicit scope.
+
+## Required commands
+
+Use the active environment and the narrowest applicable subset from `docs/RUN_PROTOCOL.md`.
+Before closing a Python/security/evaluation batch, run at minimum:
+
+```powershell
+python tools\syntax_check.py
+python -m unittest discover -s tests
+python -m emu_advisor.evaluation eval_sets\v1_gold.jsonl
+python -m emu_advisor.evaluation eval_sets\v1_hard.jsonl
+python -m emu_advisor.evaluation eval_sets\emu_gold_seed.jsonl
+python -m emu_advisor.eval_review status eval_sets\v1_gold.jsonl eval_sets\v1_hard.jsonl eval_sets\emu_gold_seed.jsonl
+python tools\publication_guard.py
+python tools\browser_smoke.py --start-server
+```
+
+Also run the dependency audit and platform-specific installation checks defined by the active
+batch. Full live crawling, Qdrant, or Ollama work is not implicit and must be separately bounded.
 
 ## Done Criteria
 

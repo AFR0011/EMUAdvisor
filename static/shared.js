@@ -168,3 +168,12 @@
     toggleTheme,
   };
 })(window);
+fetch("/health")
+  .then((response) => response.json())
+  .then((status) => {
+    const banner = document.querySelector("#fixture-banner");
+    if (banner && status.fixture === true) {
+      banner.hidden = false;
+    }
+  })
+  .catch(() => {});

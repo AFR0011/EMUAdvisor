@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hmac
 import os
 import time
 from contextlib import asynccontextmanager
@@ -28,7 +29,7 @@ from .audit_log import AuditEvent, AuditLogger, summarize_audit_log
 from .conversation_detection import is_casual_message
 from .citations import unique_citations
 from .text import tokenize
-from .conversation_store import get_store
+from .conversation_store import ConversationStore
 from .corpus import load_corpus, load_latest_metrics
 from .embeddings import create_embedding_model
 from .generation import DEFAULT_OLLAMA_LLM, OllamaGenerator
@@ -42,6 +43,10 @@ APP_DIR = Path(__file__).resolve().parent
 ROOT_DIR = APP_DIR.parent
 STATIC_DIR = ROOT_DIR / "static"
 USER_CHAT_RETRIEVAL_MODE = "balanced"
+
+
+def _env_enabled(name: str) -> bool:
+    return os.getenv(name, "").casefold() in {"1", "true", "yes", "on"}
 
 
 class AskRequest(BaseModel):
@@ -79,12 +84,44 @@ class ChatRequest(BaseModel):
     def validate_question(cls, value: str) -> str:
         return _clean_question(value)
 
+    @field_validator("session_id")
+    @classmethod
+    def validate_session_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or len(value) > 128:
+            raise ValueError("session_id must be between 1 and 128 characters")
+        return value
+
+
+class ExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    format: str = "markdown"
+
+    @field_validator("format")
+    @classmethod
+    def validate_format(cls, value: str) -> str:
+        value = value.lower().strip()
+        if value not in {"markdown", "html"}:
+            raise ValueError("format must be 'markdown' or 'html'")
+        return value
+
+
+class SessionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+
 
 def create_app() -> FastAPI:
-    corpus = load_corpus()
+    runtime_profile = os.getenv("EMU_ADVISOR_PROFILE", "").strip().casefold()
+    corpus_mode = os.getenv("EMU_ADVISOR_CORPUS_MODE", "").strip().casefold()
+    corpus = load_corpus(mode=corpus_mode, profile=runtime_profile)
     chunks = corpus.chunks
     embedder = create_embedding_model(os.getenv("EMU_ADVISOR_EMBEDDING", "hash"))
-    runtime_profile = os.getenv("EMU_ADVISOR_PROFILE", "dev").casefold()
     admin_token = os.getenv("EMU_ADVISOR_ADMIN_TOKEN", "").strip()
     if runtime_profile == "production" and not admin_token:
         raise RuntimeError("EMU_ADVISOR_ADMIN_TOKEN is required when EMU_ADVISOR_PROFILE=production")
@@ -111,8 +148,14 @@ def create_app() -> FastAPI:
     query_rewrite_model = os.getenv("EMU_ADVISOR_QUERY_REWRITE_MODEL") or os.getenv("EMU_ADVISOR_LLM", DEFAULT_OLLAMA_LLM)
     query_rewrite_timeout_s = float(os.getenv("EMU_ADVISOR_QUERY_REWRITE_TIMEOUT_S", "3"))
     query_rewrite_base_url = os.getenv("EMU_ADVISOR_QUERY_REWRITE_BASE_URL", "http://localhost:11434")
-    store = get_store()
-    logger = AuditLogger(ROOT_DIR / "logs" / "audit.jsonl")
+    store = ConversationStore()
+    audit_path = Path(os.getenv("EMU_ADVISOR_AUDIT_LOG_PATH", str(ROOT_DIR / "logs" / "audit.jsonl")))
+    audit_enabled = _env_enabled("EMU_ADVISOR_ENABLE_AUDIT_LOGGING")
+    logger = AuditLogger(
+        audit_path,
+        enabled=audit_enabled,
+        include_raw_query=_env_enabled("EMU_ADVISOR_LOG_RAW_QUERY"),
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -132,7 +175,7 @@ def create_app() -> FastAPI:
     async def board_readiness_middleware(request: Request, call_next):
         if _requires_admin_token(request, configured_token=admin_token):
             provided = _provided_admin_token(request)
-            if not provided or provided != admin_token:
+            if not provided or not hmac.compare_digest(provided, admin_token):
                 return _with_security_headers(
                     JSONResponse(status_code=401, content={"detail": "admin authentication required"}),
                     request=request,
@@ -153,7 +196,13 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> Dict[str, Any]:
-        return {"ok": True, "chunks": len(chunks), "corpus_source": corpus.source}
+        return {
+            "ok": True,
+            "chunks": len(chunks),
+            "corpus_source": corpus.source,
+            "corpus_mode": corpus.mode,
+            "fixture": corpus.fixture,
+        }
 
     @app.get("/whoami")
     def whoami() -> Dict[str, Any]:
@@ -163,12 +212,16 @@ def create_app() -> FastAPI:
             "default_embedding": retriever.embedder.metadata.model_name,
             "default_llm": generator.model,
             "chunk_count": len(chunks),
+            "corpus_mode": corpus.mode,
+            "fixture": corpus.fixture,
         }
 
     @app.get("/corpus/status")
     def corpus_status() -> Dict[str, Any]:
         return {
             "source": corpus.source,
+            "corpus_mode": corpus.mode,
+            "fixture": corpus.fixture,
             "runtime_profile": runtime_profile,
             "vector_backend": retriever.vector_backend,
             "vector_backend_warning": retriever.backend_warning,
@@ -191,7 +244,13 @@ def create_app() -> FastAPI:
 
     @app.get("/analytics")
     def analytics() -> Dict[str, Any]:
-        return summarize_audit_log(ROOT_DIR / "logs" / "audit.jsonl")
+        if not audit_enabled:
+            return {
+                "available": False,
+                "events": 0,
+                "message": "Audit logging is disabled; existing private logs were not inspected.",
+            }
+        return summarize_audit_log(audit_path)
 
     @app.get("/llm/status")
     def llm_status(smoke: bool = False) -> Dict[str, Any]:
@@ -202,12 +261,12 @@ def create_app() -> FastAPI:
         return _answer_request(request)
 
     @app.post("/chat")
-    def chat(request: ChatRequest) -> Dict[str, Any]:
-        return _handle_chat(request, prefer_generated=False)
+    def chat(payload: ChatRequest, request: Request) -> Response:
+        return _handle_chat(payload, http_request=request, prefer_generated=False)
 
     @app.post("/chat/stream")
-    def chat_stream(request: ChatRequest) -> StreamingResponse:
-        return _handle_chat_stream(request)
+    def chat_stream(payload: ChatRequest, request: Request) -> Response:
+        return _handle_chat_stream(payload, http_request=request)
 
     def _chat_retrieve_answer(
         expanded_query: str,
@@ -245,24 +304,34 @@ def create_app() -> FastAPI:
             timeout_s=query_rewrite_timeout_s,
         )
 
-    def _handle_chat(request: ChatRequest, *, prefer_generated: bool = False) -> Dict[str, Any]:
+    def _handle_chat(
+        request: ChatRequest,
+        *,
+        http_request: Request,
+        prefer_generated: bool = False,
+    ) -> Any:
         """Handle a chat request with session management, casual detection, and full pipeline."""
-        # Get or create session
-        session_id = request.session_id
-        session = store.get_session(session_id)
-        if session is None:
-            session_id = store.create_session(session_id)
-            session = store.get_session(session_id)
+        capability = _session_capability(http_request)
+        issued_capability: Optional[str] = None
+        if request.session_id:
+            session_id = request.session_id
+            if not store.owns_session(session_id, capability):
+                return _session_unavailable()
+        else:
+            access = store.create_session()
+            session_id = access.session_id
+            capability = access.capability
+            issued_capability = access.capability
 
         # Get conversation history for LLM
-        conversation_history = store.get_history(session_id)
+        conversation_history = store.get_history(session_id, capability)
 
         # Check for casual message first (short-circuit retrieval)
         is_casual, category, casual_response = is_casual_message(request.question)
         if is_casual:
             # Log the casual interaction
-            store.add_message(session_id, "user", request.question)
-            store.add_message(session_id, "assistant", casual_response)
+            store.add_message(session_id, capability, "user", request.question)
+            store.add_message(session_id, capability, "assistant", casual_response)
 
             total_ms = _elapsed_ms(time.perf_counter())
             logger.log(
@@ -276,7 +345,7 @@ def create_app() -> FastAPI:
                     citation_ids=[],
                 )
             )
-            return {
+            response = {
                 "session_id": session_id,
                 "answer": casual_response,
                 "state": "casual",
@@ -285,15 +354,18 @@ def create_app() -> FastAPI:
                 "citations": [],
                 "evidence_groups": [],
             }
+            if issued_capability:
+                response["session_capability"] = issued_capability
+            return response
 
         understanding = _understand_request_query(request.question, conversation_history)
         resolved_query = understanding.standalone_query
         route = route_query(resolved_query, language_hint=understanding.retrieval_language)
 
         if not route.in_scope:
-            store.add_message(session_id, "user", request.question)
-            store.add_message(session_id, "assistant", "I cannot answer questions outside the scope of EMU regulations.")
-            return {
+            store.add_message(session_id, capability, "user", request.question)
+            store.add_message(session_id, capability, "assistant", "I cannot answer questions outside the scope of EMU regulations.")
+            response = {
                 "session_id": session_id,
                 "answer": "I cannot answer questions outside the scope of EMU regulations.",
                 "state": "out_of_scope",
@@ -302,6 +374,9 @@ def create_app() -> FastAPI:
                 "citations": [],
                 "evidence_groups": [],
             }
+            if issued_capability:
+                response["session_capability"] = issued_capability
+            return response
 
         extractive_answer, hits = _chat_retrieve_answer(resolved_query, route=route)
 
@@ -320,8 +395,8 @@ def create_app() -> FastAPI:
                 generated_answer = generated.text or None
 
         # Store messages
-        store.add_message(session_id, "user", request.question)
-        store.add_message(session_id, "assistant", generated_answer or extractive_answer.text)
+        store.add_message(session_id, capability, "user", request.question)
+        store.add_message(session_id, capability, "assistant", generated_answer or extractive_answer.text)
 
         final_answer = generated_answer if prefer_generated and generated_answer else extractive_answer.text
         citations = [citation.as_dict() for citation in extractive_answer.citations]
@@ -339,7 +414,7 @@ def create_app() -> FastAPI:
             )
         )
 
-        return {
+        response = {
             "session_id": session_id,
             "answer": final_answer,
             "extractive_answer": extractive_answer.text,
@@ -352,6 +427,9 @@ def create_app() -> FastAPI:
             "evidence_groups": extractive_answer.evidence_groups,
             "latency_ms": total_ms,
         }
+        if issued_capability:
+            response["session_capability"] = issued_capability
+        return response
 
     def _generate_suggestions(query: str, hits: List[Mapping[str, Any]]) -> List[str]:
         """Generate context-aware follow-up suggestions based on the query and retrieved hits."""
@@ -405,13 +483,29 @@ def create_app() -> FastAPI:
 
         return suggestions[:3]  # Return up to 3 suggestions
 
-    def _handle_chat_stream(request: ChatRequest) -> StreamingResponse:
+    def _handle_chat_stream(
+        request: ChatRequest,
+        *,
+        http_request: Request,
+    ) -> StreamingResponse | JSONResponse:
         """Handle streaming chat request with NDJSON output."""
-        session_id = request.session_id
-        if store.get_session(session_id) is None:
-            session_id = store.create_session(session_id)
+        capability = _session_capability(http_request)
+        issued_capability: Optional[str] = None
+        if request.session_id:
+            session_id = request.session_id
+            if not store.owns_session(session_id, capability):
+                return _session_unavailable()
+        else:
+            access = store.create_session()
+            session_id = access.session_id
+            capability = access.capability
+            issued_capability = access.capability
 
-        conversation_history = store.get_history(session_id)
+        session_event = {"type": "session", "session_id": session_id}
+        if issued_capability:
+            session_event["session_capability"] = issued_capability
+
+        conversation_history = store.get_history(session_id, capability)
         normalized_history = [
             {"role": msg.get("role", "user"), "content": msg.get("text", msg.get("content", ""))}
             for msg in conversation_history
@@ -419,11 +513,11 @@ def create_app() -> FastAPI:
 
         is_casual, category, casual_response = is_casual_message(request.question)
         if is_casual:
-            store.add_message(session_id, "user", request.question)
-            store.add_message(session_id, "assistant", casual_response)
+            store.add_message(session_id, capability, "user", request.question)
+            store.add_message(session_id, capability, "assistant", casual_response)
 
             def casual_events():
-                yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
+                yield json.dumps(session_event, ensure_ascii=False) + "\n"
                 yield json.dumps(
                     {"type": "casual", "category": category, "text": casual_response},
                     ensure_ascii=False,
@@ -439,11 +533,11 @@ def create_app() -> FastAPI:
 
         if not route.in_scope:
             refusal = "I cannot answer questions outside the scope of EMU regulations."
-            store.add_message(session_id, "user", request.question)
-            store.add_message(session_id, "assistant", refusal)
+            store.add_message(session_id, capability, "user", request.question)
+            store.add_message(session_id, capability, "assistant", refusal)
 
             def out_of_scope_events():
-                yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
+                yield json.dumps(session_event, ensure_ascii=False) + "\n"
                 yield json.dumps({"type": "retrieving"}, ensure_ascii=False) + "\n"
                 yield json.dumps({"type": "refusal", "text": refusal}, ensure_ascii=False) + "\n"
                 yield json.dumps({"type": "suggestions", "questions": []}, ensure_ascii=False) + "\n"
@@ -452,7 +546,7 @@ def create_app() -> FastAPI:
             return StreamingResponse(out_of_scope_events(), media_type="application/x-ndjson")
 
         def stream_events():
-            yield json.dumps({"type": "session", "session_id": session_id}, ensure_ascii=False) + "\n"
+            yield json.dumps(session_event, ensure_ascii=False) + "\n"
             yield json.dumps({"type": "retrieving"}, ensure_ascii=False) + "\n"
 
             extractive_answer, hits = _chat_retrieve_answer(
@@ -509,15 +603,15 @@ def create_app() -> FastAPI:
             yield json.dumps({"type": "suggestions", "questions": suggestions}, ensure_ascii=False) + "\n"
             yield json.dumps({"type": "done"}, ensure_ascii=False) + "\n"
 
-            store.add_message(session_id, "user", request.question)
-            store.add_message(session_id, "assistant", final_assistant_text)
+            store.add_message(session_id, capability, "user", request.question)
+            store.add_message(session_id, capability, "assistant", final_assistant_text)
 
         return StreamingResponse(stream_events(), media_type="application/x-ndjson")
 
     def _answer_request(request: AskRequest, *, event_type: str = "ask") -> Dict[str, Any]:
         total_started = time.perf_counter()
         rewrite_started = time.perf_counter()
-        conversation_history = store.get_history(request.session_id) if request.session_id else []
+        conversation_history: List[Mapping[str, str]] = []
         understanding = _understand_request_query(request.question, conversation_history)
         resolved_query = understanding.standalone_query
         rewrite_ms = _elapsed_ms(rewrite_started)
@@ -616,7 +710,7 @@ def create_app() -> FastAPI:
 
     @app.post("/ask/stream")
     def ask_stream(request: AskRequest) -> StreamingResponse:
-        conversation_history = store.get_history(request.session_id) if request.session_id else []
+        conversation_history: List[Mapping[str, str]] = []
         understanding = _understand_request_query(request.question, conversation_history)
         resolved_query = understanding.standalone_query
         route = route_query(resolved_query, language_hint=understanding.retrieval_language)
@@ -660,8 +754,11 @@ def create_app() -> FastAPI:
         return StreamingResponse(events(), media_type="application/x-ndjson")
 
     @app.get("/chat/sessions")
-    def list_chat_sessions() -> List[Dict[str, Any]]:
-        """List all active chat sessions with metadata."""
+    def list_chat_sessions(request: Request) -> Any:
+        """List metadata for active sessions to an authenticated administrator."""
+        provided = _provided_admin_token(request)
+        if not admin_token or not provided or not hmac.compare_digest(provided, admin_token):
+            return JSONResponse(status_code=401, content={"detail": "admin authentication required"})
         sessions = store.list_sessions()
         return [
             {
@@ -669,18 +766,17 @@ def create_app() -> FastAPI:
                 "created_at": s.created_at,
                 "last_active": s.last_active,
                 "message_count": s.message_count,
-                "last_user_message": s.last_user_message,
             }
             for s in sessions
         ]
 
 
     @app.get("/chat/session/{session_id}")
-    def get_chat_session(session_id: str) -> Dict[str, Any]:
+    def get_chat_session(session_id: str, request: Request) -> Any:
         """Return one active chat session's visible transcript."""
-        session = store.get_session(session_id)
+        session = store.get_session(session_id, _session_capability(request))
         if session is None:
-            return {"session_id": session_id, "messages": [], "message_count": 0}
+            return _session_unavailable()
         messages = [
             {"role": msg.get("role", "unknown"), "text": msg.get("text", msg.get("content", ""))}
             for msg in session.get("messages", [])
@@ -693,39 +789,23 @@ def create_app() -> FastAPI:
             "messages": messages,
         }
 
-    class ExportRequest(BaseModel):
-        session_id: str
-        format: str = "markdown"  # "markdown" or "html"
-
-        @field_validator("format")
-        @classmethod
-        def validate_format(cls, value: str) -> str:
-            value = value.lower().strip()
-            if value not in ("markdown", "html"):
-                raise ValueError("format must be 'markdown' or 'html'")
-            return value
-
     @app.post("/chat/export")
-    def export_chat_session(request: ExportRequest) -> JSONResponse:
+    def export_chat_session(payload: ExportRequest, request: Request) -> Response:
         """Export a chat session to Markdown or HTML format."""
-        export = store.export_session(request.session_id, request.format)
+        export = store.export_session(payload.session_id, _session_capability(request) or "", payload.format)
         if export is None:
-            return JSONResponse(
-                status_code=404,
-                content={"error": f"Session '{request.session_id}' not found"},
-            )
+            return _session_unavailable()
 
-        content_type = "text/markdown" if request.format == "markdown" else "text/html"
+        content_type = "text/markdown" if payload.format == "markdown" else "text/html"
         return Response(content=export, media_type=content_type)
 
     @app.post("/chat/clear")
-    def clear_chat_session(request: ChatRequest) -> Dict[str, Any]:
+    def clear_chat_session(payload: SessionRequest, request: Request) -> Any:
         """Clear messages from a chat session."""
-        success = store.clear_session(request.session_id)
+        success = store.clear_session(payload.session_id, _session_capability(request) or "")
         if not success:
-            # Try to create if doesn't exist (for IDempotency)
-            store.create_session(request.session_id)
-        return {"session_id": request.session_id, "cleared": True, "message_count": 0}
+            return _session_unavailable()
+        return {"session_id": payload.session_id, "cleared": True, "message_count": 0}
 
     return app
 
@@ -785,6 +865,20 @@ def _provided_admin_token(request: Request) -> Optional[str]:
     if header_token:
         return header_token.strip()
     return None
+
+
+def _session_capability(request: Request) -> Optional[str]:
+    capability = request.headers.get("x-emu-session-capability")
+    if not capability:
+        return None
+    capability = capability.strip()
+    if len(capability) > 256:
+        return None
+    return capability
+
+
+def _session_unavailable() -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": "session unavailable"})
 
 
 def _requires_admin_token(request: Request, *, configured_token: str) -> bool:

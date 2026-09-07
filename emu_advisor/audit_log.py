@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -23,31 +22,36 @@ class AuditEvent:
 
 
 class AuditLogger:
-    def __init__(self, path: Path, *, salt: str = "emu-advisor-local", max_bytes: int = 1_000_000) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        enabled: bool = True,
+        include_raw_query: bool = False,
+        max_bytes: int = 1_000_000,
+    ) -> None:
         self.path = path
-        self.salt = salt
+        self.enabled = enabled
+        self.include_raw_query = include_raw_query
         self.max_bytes = max_bytes
 
     def log(self, event: AuditEvent) -> None:
+        if not self.enabled:
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._rotate_if_needed()
         payload = {
             "created_at": datetime.now(timezone.utc).isoformat(),
             "event_type": event.event_type,
-            "query": event.query,
-            "session_hash": self._hash_session(event.session_id),
             "route": event.route,
             "answer_mode": event.answer_mode,
             "latency_ms": event.latency_ms,
             "citation_ids": event.citation_ids,
         }
+        if self.include_raw_query:
+            payload["query"] = event.query
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
-
-    def _hash_session(self, session_id: Optional[str]) -> Optional[str]:
-        if not session_id:
-            return None
-        return hashlib.sha256((self.salt + session_id).encode("utf-8")).hexdigest()
 
     def _rotate_if_needed(self) -> None:
         if not self.path.exists() or self.path.stat().st_size < self.max_bytes:

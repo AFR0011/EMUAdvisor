@@ -1,0 +1,2 @@
+# Audit runner authority; application dependencies remain in requirements-lock.txt.
+pip-audit==2.10.1

@@ -1,40 +1,27 @@
-# Security Policy
+# Security and Privacy
 
-EMUAdvisor is a local research/demo application and is not an official Eastern Mediterranean University service.
+EMUAdvisor is designed for local use and is not approved for public Internet deployment.
 
-## Supported use
+## Session isolation
 
-The repository is intended for local development, evaluation, and demonstration. It should not be exposed directly to the public Internet without an independent deployment/security review, service hardening, and validation of the target Qdrant/runtime environment.
+Public chat creation returns a server-issued opaque session ID and a separate high-entropy capability. The browser keeps both in same-tab `sessionStorage` and sends the capability only in the `X-EMU-Session-Capability` header. Continuation, transcript read, export, and clear require the matching capability. The server stores only its SHA-256 hash. Public session enumeration is unavailable; administrative enumeration requires a configured admin token and omits message text.
 
-## Admin authentication
+This is capability-based local isolation, not full user authentication. Anyone who can read the browser tab or steal the capability can act on that session.
 
-When `EMU_ADVISOR_PROFILE=production`, `EMU_ADVISOR_ADMIN_TOKEN` is required for protected diagnostic/data APIs. Admin credentials must be supplied through request headers.
+## Data minimization defaults
 
-The static `/admin` application shell remains reachable so a user can enter the credential locally; loading that HTML does not grant access to protected metrics, retrieval diagnostics, analytics, corpus status, or `/ask` responses.
+- Transcript persistence: off unless `EMU_ADVISOR_ENABLE_CHAT_PERSISTENCE=1`.
+- Audit logging: off unless `EMU_ADVISOR_ENABLE_AUDIT_LOGGING=1`.
+- Raw questions in audit records: off unless `EMU_ADVISOR_LOG_RAW_QUERY=1`.
 
-Tokens must **not** be placed in URLs, query parameters, source files, screenshots, logs, or committed environment files. Query parameters are not an authentication mechanism.
+When persistence is enabled, plaintext transcript content is written to the configured local path with bounded message count and TTL pruning; capability cleartext is never stored. Protect the OS account and file permissions. Existing legacy local transcript/log files are not loaded under default settings and require an explicit owner-led cleanup/migration decision.
 
-The browser diagnostics client accepts a token through an explicit password-style field, stores it in `sessionStorage` for the current browser tab only, and sends it as an `Authorization: Bearer` header. Clearing or closing the tab removes that browser-session credential.
+## Source and runtime controls
 
-## Secrets and local artifacts
+Official ingestion is restricted to HTTPS on exactly `mevzuat.emu.edu.tr`, without credentials or nonstandard ports. Each redirect target is validated before request and the final response URL is revalidated. Local files are accepted only through explicit fixture ingestion and retain non-official fixture provenance.
 
-Do not commit:
-
-- `.env` files or service credentials;
-- local Qdrant data;
-- generated crawl/index artifacts;
-- audit logs or chat histories;
-- human-review working files containing information not intended for publication;
-- private university material not already publicly available from official sources.
-
-## Dependency security
-
-`requirements-lock.txt` is the pinned Python environment used by CI. CI installs that snapshot and runs `pip-audit` before the test/evaluation stages. Dependency updates should regenerate the lock file and rerun the complete core and browser verification jobs.
-
-## Publication safeguards
-
-`tools/publication_guard.py` enforces key release invariants, including verified-gold metadata, required publication files, and the absence of URL-based admin-token examples in the public tree.
+Fixture corpus mode is limited to development/test and visibly labeled. Artifact mode requires a valid nonempty corpus. Production refuses fixture mode, requires an admin token, and retains the documented Qdrant requirement.
 
 ## Reporting
 
-If you find a security issue, report it privately to the repository owner rather than opening a public issue containing exploit details, credentials, or sensitive data.
+Do not place secrets, private transcript content, corpus data, or security-sensitive reproduction material in a public issue. Use the repository owner’s private contact channel.

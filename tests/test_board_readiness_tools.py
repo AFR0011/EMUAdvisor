@@ -78,7 +78,7 @@ class BoardReadinessToolTests(unittest.TestCase):
             exists = out.exists()
 
         self.assertTrue(exists)
-        self.assertEqual(report["status"], "partial")
+        self.assertEqual(report["status"], "blocked")
 
 
 def _case_payload() -> dict:

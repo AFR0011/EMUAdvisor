@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .audit_log import summarize_audit_log
 from .corpus import load_latest_metrics
 from .eval_review import summarize_review_status
 
@@ -23,28 +22,33 @@ def build_readiness_report(root: Path = ROOT) -> Dict[str, Any]:
         _file_check(root / "docs" / "EMUAdvisor Full Analysis.md", "full analysis", root=root),
         _file_check(root / "docs" / "DEMO_STORYBOARD.md", "demo storyboard", root=root),
         _file_check(root / "docs" / "PUBLICATION_CHECKLIST.md", "publication checklist", root=root),
-        _file_check(root / "eval_sets" / "v1_gold.jsonl", "verified gold evaluation set", root=root),
+        _file_check(root / "eval_sets" / "v1_gold.jsonl", "assistant-curated regression set", root=root),
         _file_check(root / "eval_sets" / "v1_hard.jsonl", "hard regression set", root=root),
     ]
 
     metrics_path = root / "artifacts" / "metrics" / "latest" / "metrics.json"
     metrics = load_latest_metrics(metrics_path)
-    if metrics.get("available"):
+    if metrics.get("available") and not metrics.get("legacy"):
         checks.append(
             {
                 "name": "latest metrics artifact",
                 "status": "pass",
-                "detail": f"top5={metrics.get('retrieval_top5')} citation={metrics.get('citation_coverage')}",
+                "detail": (
+                    f"expected-evidence top5={metrics.get('expected_evidence_retrieval_top5_rate')} "
+                    f"citation-match={metrics.get('expected_evidence_citation_match_rate')} (automated proxies)"
+                ),
             }
         )
+    elif metrics.get("legacy"):
+        checks.append({"name": "latest metrics artifact", "status": "blocked", "detail": metrics["message"]})
     else:
         checks.append({"name": "latest metrics artifact", "status": "partial", "detail": "not present in artifacts"})
 
     gold_review = summarize_review_status([root / "eval_sets" / "v1_gold.jsonl"])
     checks.append(
         {
-            "name": "verified gold review status",
-            "status": "blocked" if gold_review["pending_cases"] else "pass",
+            "name": "independent evaluation review status",
+            "status": "blocked" if gold_review["pending_cases"] else "partial",
             "detail": f"{gold_review['total_cases']} cases; {gold_review['pending_cases']} pending",
         }
     )
@@ -74,12 +78,16 @@ def build_readiness_report(root: Path = ROOT) -> Dict[str, Any]:
             "detail": os.getenv("EMU_ADVISOR_QDRANT_URL") or "service-backed Qdrant not documented in environment",
         }
     )
-    analytics = summarize_audit_log(root / "logs" / "audit.jsonl")
+    analytics = {
+        "available": False,
+        "events": None,
+        "detail": "Audit logging is disabled by default; existing private logs are not inspected by readiness checks.",
+    }
     checks.append(
         {
             "name": "local analytics log",
-            "status": "pass" if analytics["events"] else "partial",
-            "detail": f"{analytics['events']} audit events",
+            "status": "partial",
+            "detail": analytics["detail"],
         }
     )
     status = _overall_status(checks)
@@ -114,7 +122,8 @@ def write_markdown_report(report: Dict[str, Any], out: Path) -> None:
             "## Non-Negotiable Limits",
             "",
             "- This is a board-demo readiness report, not a production approval.",
-            "- `v1_gold` is the human-reviewed verified gold set; auxiliary regression/seed sets have separate review status.",
+            "- `v1_gold` is an assistant-curated regression set pending independent human review.",
+            "- Automated measurements are behavior/evidence proxies, not semantic answer-quality evidence.",
             "- Production-style deployment remains blocked until service-backed Qdrant and target hardware are validated.",
             "- Generated mode remains extractive-first unless local model latency and answer quality are characterized.",
         ]
@@ -135,7 +144,7 @@ def _display_path(path: Path, *, root: Path) -> str:
 
 def _overall_status(checks: List[Dict[str, Any]]) -> str:
     if any(check["status"] == "blocked" for check in checks):
-        return "partial"
+        return "blocked"
     if any(check["status"] == "partial" for check in checks):
         return "partial"
     return "demo_ready"
@@ -144,7 +153,7 @@ def _overall_status(checks: List[Dict[str, Any]]) -> str:
 def _status_sentence(status: str) -> str:
     if status == "demo_ready":
         return "The local board demo has the required tracked evidence for a controlled demonstration."
-    return "The local board demo is presentable with named gaps that must not be described as production-ready."
+    return "Board-demo and publication readiness are blocked until independent review and reproducible live-corpus evidence exist."
 
 
 def build_parser() -> argparse.ArgumentParser:

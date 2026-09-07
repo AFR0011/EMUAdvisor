@@ -1,0 +1,95 @@
+{
+  "schema_version": "agentic-workflow/v2",
+  "root": ".",
+  "files_scanned": 84,
+  "scan_truncated": false,
+  "primary_type": "mixed",
+  "traits": [
+    "software",
+    "data-ml",
+    "research-evaluation"
+  ],
+  "confidence": "high",
+  "existing_profile": null,
+  "scores": {
+    "software": 15,
+    "data-ml": 10,
+    "documentation": 4,
+    "research": 1
+  },
+  "evidence": {
+    "software": [
+      "dir:tests",
+      "ext:.py(40)",
+      "ext:.js(3)",
+      "keywords:migration"
+    ],
+    "data-ml": [
+      "file:requirements.txt",
+      "keywords:evaluation,metrics"
+    ],
+    "documentation": [
+      "dir:docs"
+    ],
+    "research": [
+      "keywords:citation"
+    ]
+  },
+  "extension_counts": {
+    ".py": 40,
+    ".md": 19,
+    ".jsonl": 6,
+    ".txt": 3,
+    ".js": 3,
+    "": 2,
+    ".json": 2,
+    ".html": 2,
+    ".yml": 1,
+    ".css": 1
+  },
+  "existing_governance": [
+    "AGENTS.md",
+    "docs/REPO_MAP.md",
+    "docs/PROJECT_STATE.md",
+    "README.md"
+  ],
+  "top_level": [
+    ".claude/",
+    ".github/",
+    ".gitignore",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "EMU_RAG_Current_System_Specs.md",
+    "Implementation Plan 110526.md",
+    "LICENSE",
+    "PUBLICATION.md",
+    "README.md",
+    "SECURITY.md",
+    "artifacts/",
+    "docs/",
+    "emu_advisor/",
+    "eval_sets/",
+    "logs/",
+    "requirements-dev.txt",
+    "requirements-lock.txt",
+    "requirements.txt",
+    "static/",
+    "tests/",
+    "tools/"
+  ],
+  "entry_points": [
+    "emu_advisor\\index.py",
+    "emu_advisor\\server.py"
+  ],
+  "commands": [],
+  "sensitive_paths": [],
+  "generated_output_roots": [],
+  "protected_input_roots": [],
+  "selected_profile": "mixed",
+  "selected_traits": [
+    "software",
+    "data-ml"
+  ],
+  "selection_source": "explicit CLI selection",
+  "project_name": "EMUAdvisor"
+}

@@ -1,4 +1,4 @@
-"""Corpus crawl/build pipeline for presentable demo artifacts."""
+"""Corpus crawl/build pipeline with explicit source provenance."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from .schema import validate_chunk
 
 ALLOWED_HOST = "mevzuat.emu.edu.tr"
 TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"}
+REDIRECT_CODES = {301, 302, 303, 307, 308}
+MAX_REDIRECTS = 5
 
 
 @dataclass(frozen=True)
@@ -68,8 +70,15 @@ def normalize_url(url: str) -> str:
 def is_allowed_crawl_url(url: str, *, allow_file: bool = False) -> bool:
     parsed = urlparse(url)
     if allow_file and parsed.scheme == "file":
-        return True
-    return parsed.scheme in {"http", "https"} and parsed.hostname == ALLOWED_HOST
+        return not parsed.netloc and bool(parsed.path)
+    if parsed.scheme != "https" or parsed.hostname != ALLOWED_HOST:
+        return False
+    if parsed.username or parsed.password:
+        return False
+    try:
+        return parsed.port in {None, 443}
+    except ValueError:
+        return False
 
 
 def discover_links(html: str, base_url: str, *, include_pdfs: bool, allow_file: bool = False) -> List[str]:
@@ -108,18 +117,19 @@ def build_corpus(
     errors = 0
     pdf_count = 0
 
-    with httpx.Client(timeout=timeout_s, follow_redirects=True) as client:
+    with httpx.Client(timeout=timeout_s, follow_redirects=False) as client:
         while queue and len(seen) < max_pages:
             url = queue.pop(0)
             if url in seen:
                 continue
             seen.add(url)
             fetched_at = datetime.now(timezone.utc).isoformat()
-            record: Dict[str, Any] = {"url": url, "fetched_at": fetched_at}
+            record: Dict[str, Any] = {"url": _public_source_url(url), "fetched_at": fetched_at}
             try:
-                payload, content_type = _fetch(url, client)
+                payload, content_type, final_url, redirect_chain = _fetch(url, client, allow_file=allow_file)
+                source_url = _public_source_url(final_url)
                 raw_path = raw_dir / f"{len(seen):05d}_{_safe_name(url)}"
-                if url.lower().endswith(".pdf") or "pdf" in content_type.lower():
+                if final_url.lower().endswith(".pdf") or "pdf" in content_type.lower():
                     if not include_pdfs:
                         continue
                     pdf_count += 1
@@ -128,12 +138,13 @@ def build_corpus(
                     pdf_chunks = ingest_pdf_document(
                         PdfDocumentInput(
                             pdf_path=pdf_path,
-                            source_url=_public_source_url(url),
-                            source_title=_title_from_url(url),
-                            language=_language_hint_from_url(url) or "en",
+                            source_url=source_url,
+                            source_title=_title_from_url(final_url),
+                            language=_language_hint_from_url(final_url) or "en",
                             last_crawled_at=fetched_at,
                         )
                     )
+                    _mark_fixture_chunks(pdf_chunks, final_url)
                     chunks.extend(pdf_chunks)
                     record.update({"status": "ok", "content_type": content_type, "chunks": len(pdf_chunks), "source_type": "pdf"})
                 else:
@@ -143,17 +154,19 @@ def build_corpus(
                     html_chunks = ingest_html_document(
                         HtmlDocumentInput(
                             html=html,
-                            source_url=_public_source_url(url),
+                            source_url=source_url,
                             source_title=None,
                             language=_language_hint_from_url(url),
                             last_crawled_at=fetched_at,
                         )
                     )
+                    _mark_fixture_chunks(html_chunks, final_url)
                     chunks.extend(html_chunks)
                     record.update({"status": "ok", "content_type": content_type, "chunks": len(html_chunks), "source_type": "html"})
-                    for link in discover_links(html, url, include_pdfs=include_pdfs, allow_file=allow_file):
+                    for link in discover_links(html, final_url, include_pdfs=include_pdfs, allow_file=allow_file):
                         if link not in seen and link not in queue and len(seen) + len(queue) < max_pages * 3:
                             queue.append(link)
+                record.update({"requested_url": _public_source_url(url), "final_url": source_url, "redirect_chain": redirect_chain})
                 time.sleep(delay_s)
             except Exception as exc:
                 errors += 1
@@ -166,7 +179,7 @@ def build_corpus(
     _write_jsonl(pages, out_dir / "crawl_pages.jsonl")
     manifest = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "seeds": seeds,
+        "seeds": [_public_source_url(seed) for seed in seeds],
         "max_pages": max_pages,
         "include_pdfs": include_pdfs,
         "page_count": len(pages),
@@ -176,29 +189,71 @@ def build_corpus(
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     snapshot = write_snapshot(chunks, out_dir.parent / "snapshots", label="live-corpus")
-    (out_dir.parent / "active_snapshot.txt").write_text(str(snapshot.resolve()), encoding="utf-8")
+    try:
+        snapshot_pointer = snapshot.relative_to(out_dir.parent).as_posix()
+    except ValueError:
+        snapshot_pointer = snapshot.name
+    (out_dir.parent / "active_snapshot.txt").write_text(snapshot_pointer, encoding="utf-8")
     return BuildResult(out_dir=out_dir, chunk_count=len(chunks), page_count=len(pages), pdf_count=pdf_count, errors=errors)
 
 
-def _fetch(url: str, client: httpx.Client) -> tuple[bytes, str]:
+def _fetch(
+    url: str,
+    client: httpx.Client,
+    *,
+    allow_file: bool = False,
+) -> tuple[bytes, str, str, List[str]]:
     parsed = urlparse(url)
     if parsed.scheme == "file":
+        if not is_allowed_crawl_url(url, allow_file=allow_file):
+            raise ValueError("file fixtures require explicit allow_file mode")
         path = Path(url2pathname(parsed.path))
         payload = path.read_bytes()
         content_type = "application/pdf" if path.suffix.lower() == ".pdf" else "text/html"
-        return payload, content_type
+        return payload, content_type, url, []
     if not is_allowed_crawl_url(url):
         raise ValueError(f"refusing out-of-scope crawl URL: {url}")
-    response = client.get(url, headers={"User-Agent": "EMUAdvisorDemo/1.0"})
-    response.raise_for_status()
-    return response.content, response.headers.get("content-type", "")
+    current = normalize_url(url)
+    redirects: List[str] = []
+    for _ in range(MAX_REDIRECTS + 1):
+        if not is_allowed_crawl_url(current):
+            raise ValueError(f"refusing out-of-scope redirect URL: {current}")
+        response = client.get(current, headers={"User-Agent": "EMUAdvisorDemo/1.0"}, follow_redirects=False)
+        response_url = normalize_url(str(response.url))
+        if not is_allowed_crawl_url(response_url):
+            raise ValueError(f"refusing out-of-scope final response URL: {response_url}")
+        if response.status_code not in REDIRECT_CODES:
+            response.raise_for_status()
+            return response.content, response.headers.get("content-type", ""), response_url, redirects
+        location = response.headers.get("location")
+        if not location:
+            raise ValueError("redirect response is missing Location")
+        target = normalize_url(urljoin(response_url, location))
+        if not is_allowed_crawl_url(target):
+            raise ValueError(f"refusing out-of-scope redirect URL: {target}")
+        if target in redirects or target == current:
+            raise ValueError("redirect loop detected")
+        redirects.append(target)
+        current = target
+    raise ValueError(f"redirect limit exceeded ({MAX_REDIRECTS})")
 
 
 def _public_source_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme == "file":
-        return f"https://{ALLOWED_HOST}/content/fixture/{Path(parsed.path).name}"
-    return url
+        return f"fixture:///{Path(parsed.path).name}"
+    return normalize_url(url)
+
+
+def _mark_fixture_chunks(chunks: List[Dict[str, Any]], source_url: str) -> None:
+    if urlparse(source_url).scheme != "file":
+        return
+    for chunk in chunks:
+        chunk["metadata"] = {
+            **dict(chunk.get("metadata") or {}),
+            "fixture": True,
+            "official_source": False,
+        }
 
 
 def _decode_html(payload: bytes, content_type: str) -> str:

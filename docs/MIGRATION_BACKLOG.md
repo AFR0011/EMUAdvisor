@@ -1,6 +1,6 @@
 # Migration Backlog
 
-Last updated: 2026-05-05
+Last updated: 2026-09-06
 
 This backlog translates the current spec and old-demo evidence into implementation work. It is not validation that the work is complete.
 
@@ -51,3 +51,12 @@ This backlog translates the current spec and old-demo evidence into implementati
 - Show source language/corpus indicators.
 - Show bottom citations with title, section/article, page number for PDFs, URL/path, and traceability metadata.
 - Support streaming and progressive answer display when local generation is slow.
+
+## EMU-B001 Corrections and Follow-up
+
+- The tracked 60-case set is now explicitly assistant-curated/pending independent review; do not restore verified-gold metadata without the durable evidence contract.
+- New automated runs use the versioned proxy schema and expected-evidence citation matching. Independent semantic adjudication remains future work.
+- Capability-protected chat sessions, default-off persistence/logging, explicit corpus mode, exact-host redirect validation, and Windows CI are implemented in EMU-B001 and require final independent verification.
+- Implement the immutable run-manifest design before any reproducible benchmark claim.
+- Resolve corpus rights, live artifact/service validation, public-exposure authentication, and presentation/release approval in later human-reviewed batches.
+- `.old/` is absent in this checkout; do not treat stale references to it as active repository state.

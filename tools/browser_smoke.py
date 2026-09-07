@@ -54,6 +54,7 @@ def run_playwright_smoke(args) -> int:
             page.goto(admin_url, wait_until="networkidle")
             assert "EMU Regulation Assistant" in page.title()
             assert page.locator("#user-panel").is_visible()
+            assert page.locator("#fixture-banner").is_visible()
             set_theme(page, "light")
             exercise_user_chat(page)
             assert_readable_controls(page)
@@ -112,6 +113,17 @@ def exercise_user_chat(page) -> None:
     page.locator(".answer-state").first.wait_for(timeout=15000)
     assert page.locator(".answer-text, .public-citations").first.is_visible()
     wait_for_send_ready(page, timeout_s=15)
+    capability_state = page.evaluate(
+        """() => ({
+            sessionId: sessionStorage.getItem("emuSessionId"),
+            capability: sessionStorage.getItem("emuSessionCapability"),
+            url: window.location.href,
+        })"""
+    )
+    assert capability_state["sessionId"]
+    assert capability_state["capability"]
+    assert capability_state["sessionId"] != capability_state["capability"]
+    assert capability_state["capability"] not in capability_state["url"]
     state = page.evaluate(
         """before => {
             const messages = document.querySelector("#messages");
@@ -144,11 +156,9 @@ def wait_for_send_ready(page, *, timeout_s: float) -> None:
 
 def assert_readable_controls(page) -> None:
     selectors = [
-        "#history-btn",
         "#export-btn",
         "#export-format",
         "#new-session-btn",
-        "#advanced-toggle",
         "#theme-toggle",
         ".view-tab.is-active",
         ".view-tab:not(.is-active)",

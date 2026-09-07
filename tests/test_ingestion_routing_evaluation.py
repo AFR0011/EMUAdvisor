@@ -175,9 +175,8 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(sum(1 for case in cases if case.expected_behavior == "refuse"), 4)
         self.assertEqual(sum(1 for case in cases if case.expected_behavior == "clarify"), 4)
         self.assertEqual(sum(1 for case in cases if case.expected_behavior == "conflict"), 4)
-        self.assertEqual({case.review_status for case in cases}, {"human_reviewed_verified"})
-        self.assertTrue(all(case.is_correct is True for case in cases))
-        self.assertTrue(all(case.citation_ok is True for case in cases))
+        self.assertEqual({case.review_status for case in cases}, {"assistant_curated_pending_independent_review"})
+        self.assertTrue(all(case.is_correct is None and case.citation_ok is None for case in cases))
         for case in cases:
             if case.expected_behavior in {"answer", "conflict"}:
                 self.assertTrue(case.expected_chunk_ids or case.expected_source_urls)

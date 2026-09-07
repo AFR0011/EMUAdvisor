@@ -1,59 +1,22 @@
-# Board Demo Storyboard
+# Controlled Demo Storyboard (Deferred)
 
-Status: board-demo script, not production approval.
+This storyboard is a future controlled-demo outline, not approval to present the repository.
 
-## Slide 1 - Purpose
+## Entry conditions
 
-- EMU Regulation Assistant answers staff-facing questions about indexed EMU regulations.
-- Scope is official `mevzuat.emu.edu.tr` HTML plus linked official PDFs.
-- The demo is local-only and informational.
+- Independent human review is durably evidenced.
+- An artifact-backed corpus and proxy run have immutable manifests and hashes.
+- Corpus-use/publication rights are resolved.
+- Target hardware, local services, privacy settings, and deployment boundaries are validated.
+- Independent QA explicitly clears the demo gate.
 
-## Slide 2 - Trust Model
+## Future sequence
 
-- English and Turkish corpora remain separate in V1.
-- Every substantive answer carries citations.
-- Weak, ambiguous, or out-of-scope questions are clarified or refused.
+1. State that the tool is independent and informational.
+2. Show the runtime profile and corpus mode before any question.
+3. Demonstrate English and Turkish routing with citations.
+4. Demonstrate refusal/clarification on weak or out-of-scope evidence.
+5. Show precise automated proxy names and their input manifest; do not translate them into semantic quality claims.
+6. Close with known limits, privacy defaults, and escalation to the official regulation source.
 
-## Slide 3 - Architecture
-
-- Official sources are crawled into canonical chunks.
-- Hybrid retrieval selects cited evidence.
-- Deterministic answerability gates run before optional local generation.
-- Local audit logs and metrics support review without external telemetry.
-
-## Slide 4 - Live Question
-
-Use: `What is the attendance requirement?`
-
-Expected demo behavior:
-
-- Answer from indexed regulation evidence.
-- Show source language and bottom citations.
-- Keep `/chat` output public-safe without raw hit diagnostics (User mode at `/admin?view=user`).
-
-## Slide 5 - Edge Cases
-
-Use:
-
-- `What about graduation?`
-- `Bugun kampuste hangi burs etkinlikleri var?`
-- `Arastirma gorevlisi burs kurallari farkli veya celiskili mi?`
-
-Expected demo behavior:
-
-- Clarify vague questions.
-- Refuse event/general-campus questions.
-- Keep the answer within the detected-language regulation corpus.
-
-## Slide 6 - Evidence And Metrics
-
-- Candidate and hard-regression metrics are useful regression evidence.
-- They remain assistant-curated until human review is complete.
-- Present extractive latency, top-5 retrieval, citation coverage, refusal behavior, and known generated-mode limits.
-
-## Slide 7 - Roadmap Ask
-
-- Complete human review of the evaluation sets.
-- Validate live Qdrant service and target campus hardware.
-- Decide whether generated mode remains opt-in or becomes part of the demo.
-- Approve pilot constraints before any production-like deployment.
+Until the entry conditions pass, use fixture mode only for software verification and do not capture presentation media.

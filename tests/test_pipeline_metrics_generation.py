@@ -67,10 +67,16 @@ class PipelineTests(unittest.TestCase):
 
             self.assertEqual(result.errors, 0)
             self.assertGreaterEqual(result.chunk_count, 1)
-            self.assertEqual(chunks[0]["source_url"], "https://mevzuat.emu.edu.tr/content/fixture/fixture.htm")
+            self.assertEqual(chunks[0]["source_url"], "fixture:///fixture.htm")
+            self.assertTrue(chunks[0]["metadata"]["fixture"])
+            self.assertFalse(chunks[0]["metadata"]["official_source"])
+            self.assertNotIn(str(root), json.dumps(chunks[0]))
             self.assertEqual(chunks[0]["language"], "en")
             self.assertTrue((out / "manifest.json").exists())
             self.assertTrue((out.parent / "active_snapshot.txt").exists())
+            self.assertNotIn(str(root), (out / "manifest.json").read_text(encoding="utf-8"))
+            self.assertNotIn(str(root), (out / "crawl_pages.jsonl").read_text(encoding="utf-8"))
+            self.assertNotIn(str(root), (out.parent / "active_snapshot.txt").read_text(encoding="utf-8"))
 
     def test_fixture_pipeline_uses_content_language_when_url_is_ambiguous(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -110,10 +116,13 @@ class MetricsTests(unittest.TestCase):
             summary = run_evaluation(cases_path=cases, chunks_path=chunks, out_dir=out)
 
             self.assertEqual(summary["cases"], 60)
-            self.assertEqual(summary["retrieval_top5"], 1.0)
+            self.assertEqual(summary["expected_evidence_retrieval_top5_rate"], 1.0)
             self.assertEqual(summary["mode"], "balanced")
             self.assertIn("mode_preset", summary)
-            self.assertIn("total_score", summary)
+            self.assertEqual(summary["schema_version"], "emu-advisor-automated-proxy/v2")
+            self.assertIn("weighted_proxy_score", summary)
+            self.assertNotIn("response_accuracy", summary)
+            self.assertNotIn("groundedness", summary)
             self.assertIn("failure_counts", summary)
             self.assertIn("category_metrics", summary)
             self.assertIn("worst_failed_cases", summary)

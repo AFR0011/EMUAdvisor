@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("EMU_ADVISOR_PROFILE", "test")
+os.environ.setdefault("EMU_ADVISOR_CORPUS_MODE", "fixture")
 
 from emu_advisor.audit_log import AuditEvent, AuditLogger
 from emu_advisor.corpus import CorpusBundle, corpus_status
@@ -24,7 +28,10 @@ class ServerTests(unittest.TestCase):
             "os.environ",
             {
                 "EMU_ADVISOR_QUERY_REWRITE": "deterministic",
-                "EMU_ADVISOR_DISABLE_CHAT_PERSISTENCE": "1",
+                "EMU_ADVISOR_PROFILE": "test",
+                "EMU_ADVISOR_CORPUS_MODE": "fixture",
+                "EMU_ADVISOR_ENABLE_CHAT_PERSISTENCE": "0",
+                "EMU_ADVISOR_ENABLE_AUDIT_LOGGING": "0",
             },
             clear=False,
         )
@@ -181,7 +188,7 @@ class ServerTests(unittest.TestCase):
         ):
             response = client.post(
                 "/chat/stream",
-                json={"question": "What is the attendance requirement?", "session_id": "test-stream"},
+                json={"question": "What is the attendance requirement?"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -189,6 +196,8 @@ class ServerTests(unittest.TestCase):
         lines = [json.loads(line) for line in response.text.splitlines() if line.strip()]
         types = [line["type"] for line in lines]
         self.assertEqual(types[0], "session")
+        self.assertIn("session_capability", lines[0])
+        self.assertNotEqual(lines[0]["session_id"], lines[0]["session_capability"])
         self.assertIn("extractive_answer", types)
         self.assertLess(types.index("generated_delta"), types.index("extractive_answer"))
         self.assertEqual(types[-1], "done")
@@ -209,7 +218,7 @@ class ServerTests(unittest.TestCase):
             chat = client.post("/chat", json={"question": "What is the attendance requirement?"})
             stream = client.post(
                 "/chat/stream",
-                json={"question": "What is the attendance requirement?", "session_id": "balanced-stream"},
+                json={"question": "What is the attendance requirement?"},
             )
 
         self.assertEqual(chat.status_code, 200)
@@ -217,11 +226,17 @@ class ServerTests(unittest.TestCase):
         self.assertGreaterEqual(len(observed_modes), 2)
         self.assertEqual(set(observed_modes), {"balanced"})
 
-    def test_chat_sessions_list_does_not_error(self) -> None:
-        client = TestClient(create_app())
-        response = client.get("/chat/sessions")
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(response.json(), list)
+    def test_chat_sessions_are_admin_only_and_omit_message_text(self) -> None:
+        with patch.dict("os.environ", {"EMU_ADVISOR_ADMIN_TOKEN": "secret"}, clear=False):
+            client = TestClient(create_app())
+        client.post("/chat", json={"question": "private attendance question"})
+        denied = client.get("/chat/sessions")
+        allowed = client.get("/chat/sessions", headers={"X-EMU-Admin-Token": "secret"})
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(allowed.status_code, 200)
+        self.assertIsInstance(allowed.json(), list)
+        self.assertNotIn("private attendance question", json.dumps(allowed.json()))
+        self.assertTrue(all("last_user_message" not in item for item in allowed.json()))
 
     def test_casual_chat_returns_friendly_response(self) -> None:
         client = TestClient(create_app())
@@ -322,15 +337,19 @@ class ServerTests(unittest.TestCase):
             client = TestClient(create_app())
             first = client.post(
                 "/chat",
-                json={"question": "What is the attendance requirement?", "session_id": "language-switch-chat"},
+                json={"question": "What is the attendance requirement?"},
             )
+            session_id = first.json()["session_id"]
+            session_headers = {"X-EMU-Session-Capability": first.json()["session_capability"]}
             second = client.post(
                 "/chat",
-                json={"question": "buna nasil basvururum", "session_id": "language-switch-chat"},
+                headers=session_headers,
+                json={"question": "buna nasil basvururum", "session_id": session_id},
             )
             stream = client.post(
                 "/chat/stream",
-                json={"question": "buna nasil basvururum", "session_id": "language-switch-chat"},
+                headers=session_headers,
+                json={"question": "buna nasil basvururum", "session_id": session_id},
             )
 
         self.assertEqual(first.status_code, 200)
@@ -345,10 +364,10 @@ class ServerTests(unittest.TestCase):
 
 
 class AuditLoggingTests(unittest.TestCase):
-    def test_audit_log_hashes_session_id_and_keeps_debug_fields(self) -> None:
+    def test_audit_log_omits_query_and_session_identifier_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "audit.jsonl"
-            logger = AuditLogger(path, salt="test")
+            logger = AuditLogger(path)
             logger.log(
                 AuditEvent(
                     event_type="ask",
@@ -363,9 +382,19 @@ class AuditLoggingTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertNotIn("user@example.com", json.dumps(payload))
+        self.assertNotIn("attendance requirement", json.dumps(payload))
         self.assertEqual(payload["answer_mode"], "answer")
         self.assertEqual(payload["citation_ids"], ["doc:c1"])
-        self.assertIsNotNone(payload["session_hash"])
+        self.assertNotIn("session_hash", payload)
+
+    def test_raw_query_logging_requires_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "audit.jsonl"
+            logger = AuditLogger(path, include_raw_query=True)
+            logger.log(AuditEvent("ask", "synthetic question", "synthetic-session", {}, "refuse", 1, []))
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["query"], "synthetic question")
+        self.assertNotIn("synthetic-session", json.dumps(payload))
 
 
 class LoadSimulationTests(unittest.TestCase):

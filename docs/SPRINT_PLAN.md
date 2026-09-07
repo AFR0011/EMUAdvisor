@@ -1,5 +1,7 @@
 # Sprint Implementation And Testing Plan
 
+> **Historical sprint plan only.** Goals, acceptance statements, and readiness gates in this file are plans, not evidence of completion. Current authority is `DEV_STATE.md` and `docs/PROJECT_STATE.md`; presentation remains blocked.
+
 Last updated: 2026-04-30
 
 Primary source of truth: `EMU_RAG_Current_System_Specs.md`
