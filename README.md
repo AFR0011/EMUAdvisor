@@ -1,12 +1,52 @@
 # EMUAdvisor
 
-EMUAdvisor is an independent, local-only English/Turkish retrieval assistant for public Eastern Mediterranean University regulations. It is a research/demo project, not an official university service, decision-maker, or production deployment.
+EMUAdvisor is an independent, local-only English/Turkish retrieval assistant for public Eastern Mediterranean University regulations. It combines deterministic routing, hybrid retrieval, cited answers, refusal and clarification behavior, and optional local generation behind a FastAPI application.
+
+It is a research/demo project, not an official university service, decision-maker, or production deployment.
+
+## What it demonstrates
+
+- **Grounded retrieval:** deterministic routing with hybrid local/Qdrant retrieval over an explicitly selected corpus.
+- **Evidence-first answering:** cited extractive answers, clarification paths, and refusal behavior rather than answering every query at any cost.
+- **Bilingual application surface:** English/Turkish retrieval-assistant workflow with a static user and diagnostic UI.
+- **Local runtime boundary:** answering, retrieval, and optional generation remain local; no external answering or model API is required.
+- **Optional local generation:** Ollama can provide generation while remaining inside the local runtime boundary.
+- **Controlled ingestion:** official-source ingestion is restricted to exact-host HTTPS on `mevzuat.emu.edu.tr`, including redirect/final-URL validation.
+- **Privacy-aware sessions:** public continuation/read/export/clear operations require a server-issued session ID plus a separate per-session capability.
+- **Evaluation tooling:** tracked regression sets, automated proxy metrics, review-status tooling, and publication guards keep software behavior separate from unsupported answer-quality claims.
+
+## System boundary
+
+```text
+Official public regulations
+        │
+        │ controlled HTTPS ingestion
+        ▼
+  corpus / local artifacts
+        │
+        ▼
+ deterministic routing
+        │
+        ▼
+ hybrid retrieval ───────────► local / Qdrant path
+        │
+        ▼
+ evidence + answerability
+        │
+        ├──► cited extractive answer
+        ├──► clarification / refusal
+        └──► optional local Ollama generation
+```
+
+Fixture mode is explicit, limited to development/test, visibly labeled, and never attributed to the official source domain. Artifact-backed mode fails closed when required corpus artifacts are missing or invalid.
 
 ## Current status
 
 The software path is active, but benchmark, board-demo, publication, release, and production-readiness claims are blocked. The tracked 60-case `eval_sets/v1_gold.jsonl` file is an assistant-curated regression set pending independent human review. Its historical filename is retained for compatibility; it is not verified gold evidence.
 
 Historical percentages in older project records were produced by automated retrieval/behavior proxies. They did not semantically grade answer correctness, citation precision, or claim-level grounding. New metric output uses schema `emu-advisor-automated-proxy/v2` and labels those observations explicitly.
+
+Current blockers include independent human adjudication, immutable run manifests and an artifact-backed reproducible rerun, corpus rights/distribution decisions, live Qdrant/Ollama/target-hardware validation, and an Internet-grade identity/threat model.
 
 ## Trust boundary
 
