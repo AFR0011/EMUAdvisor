@@ -4,9 +4,15 @@ Workflow schema: `agentic-workflow/v2`
 
 ## Evaluation sets
 
-`v1_gold` is currently assistant-curated despite its present metadata; no durable independent
-human-review artifact is committed. `v1_hard` is an assistant-curated regression set and
-`emu_gold_seed` is provisional. None is an independently held-out semantic-quality gold standard.
+`v1_gold` was assembled with assistant support. On 2026-10-19, the project author
+attested to manually checking its questions, expected answers, and source references
+against the available university regulations. This is an author-reported review of the
+reference cases, **not** independent human adjudication of the system's actual answers
+or citations, and no reproducible per-case review artifact is committed. University staff
+separately tried the application informally; they did not review the gold set. Case-level
+pending-independent-review metadata remains conservative on purpose. `v1_hard` is an
+assistant-curated regression set and `emu_gold_seed` is provisional. None is an
+independently held-out semantic-quality gold standard.
 
 ## Current measurable behaviors
 
