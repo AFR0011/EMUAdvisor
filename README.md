@@ -42,7 +42,7 @@ Fixture mode is explicit, limited to development/test, visibly labeled, and neve
 
 ## Current status
 
-The software path is active, but benchmark, board-demo, publication, release, and production-readiness claims are blocked. The tracked 60-case `eval_sets/v1_gold.jsonl` file is an assistant-curated regression set pending independent human review. Its historical filename is retained for compatibility; it is not verified gold evidence.
+The software path is active, but benchmark, board-demo, publication, release, and production-readiness claims are blocked. The tracked 60-case `eval_sets/v1_gold.jsonl` file was assembled with assistant support and, according to the project author's clarification on 2026-10-19, the author personally checked its questions, expected answers, and supporting official regulations. This is an **author-attested source review**, not a durable independent adjudication of the system's responses or citations. University staff separately tested the application informally; they did not independently validate the gold set or approve deployment. The conservative case-level `assistant_curated_pending_independent_review` metadata remains unchanged until a reproducible review artifact is recorded. The historical filename is retained for compatibility; it is not independently validated gold evidence.
 
 Historical percentages in older project records were produced by automated retrieval/behavior proxies. They did not semantically grade answer correctness, citation precision, or claim-level grounding. New metric output uses schema `emu-advisor-automated-proxy/v2` and labels those observations explicitly.
 
